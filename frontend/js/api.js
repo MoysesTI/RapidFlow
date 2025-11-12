@@ -142,3 +142,4 @@ class ApiClient {
 
 // Instância global
 const api = new ApiClient();
+
