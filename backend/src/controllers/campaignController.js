@@ -5,41 +5,47 @@ const os = require('os');
 const { parseContactsFile } = require('../utils/fileParser');
 const { pool } = require('../config/database');
 
-// Usar pasta temporária do sistema
-const uploadDir = process.env.NODE_ENV === 'production' 
-    ? path.join(os.tmpdir(), 'rapidflow-uploads')
-    : path.join(__dirname, '../../uploads');
+// Determinar pasta de upload baseado no ambiente
+const getUploadDir = () => {
+    if (process.env.NODE_ENV === 'production') {
+        const tmpDir = path.join(os.tmpdir(), 'rapidflow-uploads');
+        if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true });
+            console.log(`📁 Pasta temp criada: ${tmpDir}`);
+        }
+        return tmpDir;
+    } else {
+        const localDir = path.join(__dirname, '../../uploads');
+        if (!fs.existsSync(localDir)) {
+            fs.mkdirSync(localDir, { recursive: true });
+        }
+        return localDir;
+    }
+};
 
-// Criar pasta se não existir
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    console.log(`📁 Pasta de uploads criada: ${uploadDir}`);
-}
-
-// Configurar multer para usar a pasta correta
+// Configurar multer
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
+        const uploadDir = getUploadDir();
+        console.log(`📂 Upload dir: ${uploadDir}`);
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
+        const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
+        console.log(`📝 Nome do arquivo: ${uniqueName}`);
+        cb(null, uniqueName);
     }
 });
 
 const upload = multer({
     storage: storage,
-    limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB
-    },
+    limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        const allowedTypes = ['.csv', '.xlsx', '.xls'];
         const ext = path.extname(file.originalname).toLowerCase();
-        
-        if (allowedTypes.includes(ext)) {
+        if (['.csv', '.xlsx', '.xls'].includes(ext)) {
             cb(null, true);
         } else {
-            cb(new Error('Apenas arquivos CSV e Excel são permitidos'));
+            cb(new Error('Tipo de arquivo não permitido'));
         }
     }
 });
@@ -56,8 +62,14 @@ exports.uploadContacts = [
                 });
             }
 
-            console.log(`📄 Processando arquivo: ${req.file.originalname}`);
-            console.log(`📂 Caminho: ${req.file.path}`);
+            console.log(`✅ Arquivo recebido: ${req.file.originalname}`);
+            console.log(`📂 Salvo em: ${req.file.path}`);
+            console.log(`📊 Tamanho: ${req.file.size} bytes`);
+
+            // Verificar se arquivo existe
+            if (!fs.existsSync(req.file.path)) {
+                throw new Error(`Arquivo não encontrado: ${req.file.path}`);
+            }
 
             // Parse do arquivo
             const contacts = await parseContactsFile(req.file.path);
@@ -68,21 +80,20 @@ exports.uploadContacts = [
 
             res.json({
                 success: true,
-                message: `${contacts.length} contatos carregados com sucesso!`,
+                message: `${contacts.length} contatos carregados!`,
                 contacts: contacts
             });
 
         } catch (error) {
-            console.error('❌ Erro ao processar arquivo:', error);
+            console.error('❌ Erro no upload:', error);
             
-            // Limpar arquivo em caso de erro
             if (req.file && fs.existsSync(req.file.path)) {
                 fs.unlinkSync(req.file.path);
             }
 
             res.status(500).json({
                 success: false,
-                message: 'Erro ao processar arquivo: ' + error.message
+                message: error.message
             });
         }
     }
@@ -101,7 +112,6 @@ exports.createCampaign = async (req, res) => {
             });
         }
 
-        // Salvar campanha no banco
         const result = await pool.query(
             `INSERT INTO campaigns (user_id, name, contacts, config, status, total_contacts, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -111,7 +121,7 @@ exports.createCampaign = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Campanha criada com sucesso!',
+            message: 'Campanha criada!',
             campaign: result.rows[0]
         });
 
@@ -119,7 +129,7 @@ exports.createCampaign = async (req, res) => {
         console.error('Erro ao criar campanha:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao criar campanha: ' + error.message
+            message: error.message
         });
     }
 };
