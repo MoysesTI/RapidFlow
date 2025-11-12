@@ -1,74 +1,75 @@
 const XLSX = require('xlsx');
 const csv = require('csv-parser');
-const fs = require('fs');
+const { Readable } = require('stream');
 const path = require('path');
 
-console.log('==== FILE PARSER LOADED ====');
+console.log('==== FILE PARSER WITH BUFFER SUPPORT ====');
 
-async function parseContactsFile(filePath) {
-    console.log('Parsing file:', filePath);
-    console.log('File exists:', fs.existsSync(filePath));
-    
-    if (!fs.existsSync(filePath)) {
-        throw new Error('File not found: ' + filePath);
-    }
+async function parseContactsBuffer(buffer, filename) {
+    console.log('Parsing buffer, filename:', filename);
+    console.log('Buffer size:', buffer.length);
 
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(filename).toLowerCase();
     console.log('Extension:', ext);
 
     if (ext === '.csv') {
-        return parseCSV(filePath);
+        return parseCSVBuffer(buffer);
     } else if (ext === '.xlsx' || ext === '.xls') {
-        return parseExcel(filePath);
+        return parseExcelBuffer(buffer);
     } else {
-        throw new Error('Invalid file type: ' + ext);
+        throw new Error('Unsupported file type: ' + ext);
     }
 }
 
-function parseCSV(filePath) {
+function parseCSVBuffer(buffer) {
     return new Promise((resolve, reject) => {
         const contacts = [];
-        
-        fs.createReadStream(filePath)
+        const stream = Readable.from(buffer.toString('utf-8'));
+
+        stream
             .pipe(csv())
             .on('data', (row) => {
                 const contact = {
-                    nome: row.nome || row.Nome || row.name || '',
-                    telefone: (row.telefone || row.Telefone || row.phone || '').toString().replace(/\D/g, '')
+                    nome: row.nome || row.Nome || row.name || row.Name || '',
+                    telefone: (row.telefone || row.Telefone || row.phone || row.Phone || '').toString().replace(/\D/g, '')
                 };
-                
+
                 if (contact.telefone) {
                     contacts.push(contact);
                 }
             })
             .on('end', () => {
-                console.log('CSV parsed:', contacts.length, 'contacts');
+                console.log('CSV parsed from buffer:', contacts.length, 'contacts');
                 resolve(contacts);
             })
-            .on('error', reject);
+            .on('error', (error) => {
+                console.error('CSV parsing error:', error);
+                reject(error);
+            });
     });
 }
 
-function parseExcel(filePath) {
+function parseExcelBuffer(buffer) {
     try {
-        const workbook = XLSX.readFile(filePath);
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(sheet);
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(worksheet);
 
         const contacts = data
             .map(row => ({
-                nome: row.nome || row.Nome || row.name || '',
-                telefone: (row.telefone || row.Telefone || row.phone || '').toString().replace(/\D/g, '')
+                nome: row.nome || row.Nome || row.name || row.Name || '',
+                telefone: (row.telefone || row.Telefone || row.phone || row.Phone || '').toString().replace(/\D/g, '')
             }))
             .filter(c => c.telefone);
 
-        console.log('Excel parsed:', contacts.length, 'contacts');
+        console.log('Excel parsed from buffer:', contacts.length, 'contacts');
         return contacts;
 
     } catch (error) {
-        console.error('Excel parse error:', error);
+        console.error('Excel parsing error:', error);
         throw error;
     }
 }
 
-module.exports = { parseContactsFile };
+module.exports = { parseContactsBuffer };
