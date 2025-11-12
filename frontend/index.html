@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RapidFlow - Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="main-header">
+        <div class="logo">
+            <h1>RapidFlow</h1>
+        </div>
+        <div class="user-menu">
+            <div class="user-info">
+                <span id="userName">Carregando...</span>
+                <small id="userRole">...</small>
+            </div>
+            <button class="btn-logout" id="logoutBtn">Sair</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="dashboard">
+            <div class="card status-card">
+                <h3>Status da Campanha</h3>
+                <div class="status-grid">
+                    <div class="status-item status-waiting">
+                        <span class="label">Status</span>
+                        <span id="campaignStatus" class="value">Aguardando</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Enviadas</span>
+                        <span id="sentCount" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Total</span>
+                        <span id="totalCount" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Erros</span>
+                        <span id="errorCount" class="value">0</span>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div id="progressBar" class="progress-bar">
+                        <div id="progressFill" class="progress-fill">0%</div>
+                    </div>
+                </div>
+                <div class="time-estimate">
+                    <small>Tempo estimado: <span id="timeEstimate">--</span></small>
+                </div>
+            </div>
+
+            <div class="card config-card">
+                <h3>Configurações da Campanha</h3>
+                <form id="campaignForm">
+                    <div class="form-group">
+                        <label>Webhook n8n</label>
+                        <input type="url" id="webhookUrl" placeholder="https://seu-n8n.com/webhook/campanha" required>
+                        <small>Cole aqui a URL do webhook do seu n8n</small>
+                    </div>
+
+                    <div class="admin-only">
+                        <div class="form-group">
+                            <label>Evolution API Endpoint</label>
+                            <input type="url" id="evolutionEndpoint">
+                        </div>
+                        <div class="form-group">
+                            <label>API Key (Evolution)</label>
+                            <input type="text" id="apiKey">
+                            <small>Apenas administradores podem editar</small>
+                        </div>
+                        <div class="form-group">
+                            <label>OpenAI API Key</label>
+                            <input type="password" id="openaiKey" placeholder="sk-...">
+                            <small>Necessário para geração de mensagens personalizadas</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>URL da Imagem Promocional</label>
+                        <input type="url" id="imageUrl" placeholder="https://...">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Delay Mínimo (segundos)</label>
+                            <input type="number" id="delayMin" value="140" min="10" max="600">
+                        </div>
+                        <div class="form-group">
+                            <label>Delay Máximo (segundos)</label>
+                            <input type="number" id="delayMax" value="380" min="10" max="600">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Modelo OpenAI</label>
+                        <select id="openaiModel">
+                            <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
+                            <option value="gpt-4" selected>GPT-4</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Prompt de Personalização</label>
+                        <textarea id="systemPrompt" rows="6" placeholder="Instruções para geração de mensagens..."></textarea>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" onclick="uploadContacts()">Carregar Contatos</button>
+                        <button type="button" class="btn btn-info" onclick="testConnection()">Testar Conexão</button>
+                        <button type="submit" class="btn btn-primary" id="startBtn">Iniciar Campanha</button>
+                        <button type="button" class="btn btn-danger" onclick="stopCampaign()" id="stopBtn" style="display:none;">Parar Campanha</button>
+                    </div>
+                </form>
+                <input type="file" id="contactsFile" accept=".csv,.xlsx,.xls" style="display:none">
+            </div>
+
+            <div class="card contacts-card">
+                <div class="card-header">
+                    <h3>Contatos (<span id="contactCount">0</span>)</h3>
+                </div>
+                <div id="contactsList" class="contacts-list">
+                    <div class="empty-state">
+                        <p>Nenhum contato carregado</p>
+                        <small>Clique em "Carregar Contatos" para começar</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card log-card">
+                <div class="card-header">
+                    <h3>Log de Atividades</h3>
+                    <button class="btn-clear" onclick="clearLogs()">Limpar</button>
+                </div>
+                <div id="activityLog" class="log-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - RapidFlow</title>
+    <link rel="stylesheet" href="css/style-login.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="brand-side">
+            <div class="brand-logo">
+                <h1>RapidFlow</h1>
+                <p class="brand-tagline">Automação inteligente para campanhas em massa</p>
+            </div>
+            <div class="brand-features">
+                <div class="feature-item">
+                    <div class="check">✓</div>
+                    <div>
+                        <h3>Envios em Lote</h3>
+                        <p>Processe milhares de mensagens automaticamente</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="check">✓</div>
+                    <div>
+                        <h3>IA Personalizada</h3>
+                        <p>Mensagens únicas geradas com inteligência artificial</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="check">✓</div>
+                    <div>
+                        <h3>Controle Total</h3>
+                        <p>Gerencie suas campanhas em tempo real</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="form-side">
+            <div class="form-header">
+                <h2>Bem-vindo de volta</h2>
+                <p>Acesse sua conta para continuar</p>
+            </div>
+            <div class="form-tabs">
+                <button class="form-tab active" onclick="showLogin()">Login</button>
+                <button class="form-tab" onclick="showRegister()">Criar Conta</button>
+            </div>
+            <form id="loginForm" class="form-container active" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" placeholder="seu@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Senha</label>
+                    <input type="password" id="loginPassword" placeholder="Digite sua senha" required>
+                </div>
+                <div class="form-options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="rememberMe">
+                        <span>Lembrar-me</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn-submit">Entrar</button>
+            </form>
+            <form id="registerForm" class="form-container" onsubmit="handleRegister(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome</label>
+                        <input type="text" id="regNome" placeholder="Seu nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Sobrenome</label>
+                        <input type="text" id="regSobrenome" placeholder="Sobrenome" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="regEmail" placeholder="seu@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Telefone</label>
+                    <input type="tel" id="regTelefone" placeholder="(00) 00000-0000" required>
+                </div>
+                <div class="form-group">
+                    <label>Senha</label>
+                    <input type="password" id="regSenha" placeholder="Mínimo 6 caracteres" required minlength="6">
+                </div>
+                <div class="form-group">
+                    <label>Confirmar Senha</label>
+                    <input type="password" id="regSenhaConfirm" placeholder="Digite novamente" required>
+                </div>
+                <button type="submit" class="btn-submit">Criar Conta</button>
+            </form>
+        </div>
+    </div>
+    <div id="alertMessage" class="alert-message"></div>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        function showLogin() {
+            document.getElementById('loginForm').classList.add('active');
+            document.getElementById('registerForm').classList.remove('active');
+            document.querySelectorAll('.form-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+        function showRegister() {
+            document.getElementById('registerForm').classList.add('active');
+            document.getElementById('loginForm').classList.remove('active');
+            document.querySelectorAll('.form-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
