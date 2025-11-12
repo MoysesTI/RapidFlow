@@ -1,95 +1,88 @@
-﻿const xlsx = require('xlsx');
+const XLSX = require('xlsx');
+const csv = require('csv-parser');
 const fs = require('fs');
+const path = require('path');
+
+async function parseContactsFile(filePath) {
+    console.log('Parsing file:', filePath);
+    
+    // Verificar se arquivo existe
+    if (!fs.existsSync(filePath)) {
+        throw new Error('File does not exist: ' + filePath);
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    console.log('File extension:', ext);
+
+    if (ext === '.csv') {
+        return parseCSV(filePath);
+    } else if (ext === '.xlsx' || ext === '.xls') {
+        return parseExcel(filePath);
+    } else {
+        throw new Error('Unsupported file type: ' + ext);
+    }
+}
 
 function parseCSV(filePath) {
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    
-    if (lines.length === 0) {
-        throw new Error('Arquivo CSV vazio');
-    }
-    
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const contacts = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',');
-        const contact = {};
-        
-        headers.forEach((header, index) => {
-            const value = values[index]?.trim() || '';
-            
-            if (header.includes('nome') || header.includes('name') || header.includes('aluno')) {
-                contact.nome = value;
-            } else if (header.includes('tel') || header.includes('phone') || header.includes('whats')) {
-                contact.telefone = value;
-            }
-        });
-        
-        if (contact.nome && contact.telefone) {
-            // Processar múltiplos telefones separados por /
-            const phones = contact.telefone.split('/').map(p => p.trim()).filter(p => p);
-            
-            phones.forEach(phone => {
-                contacts.push({
-                    nome: contact.nome,
-                    telefone: phone
-                });
-            });
-        }
-    }
-    
-    return contacts;
-}
+    return new Promise((resolve, reject) => {
+        const contacts = [];
+        const stream = fs.createReadStream(filePath);
 
-function parseXLSX(filePath) {
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const data = xlsx.utils.sheet_to_json(sheet);
-    
-    const contacts = [];
-    
-    data.forEach(row => {
-        let nome = '';
-        let telefone = '';
-        
-        // Procurar colunas de nome
-        Object.keys(row).forEach(key => {
-            const keyLower = key.toLowerCase();
-            if (keyLower.includes('nome') || keyLower.includes('name') || keyLower.includes('aluno')) {
-                nome = row[key];
-            } else if (keyLower.includes('tel') || keyLower.includes('phone') || keyLower.includes('whats')) {
-                telefone = String(row[key]);
-            }
-        });
-        
-        if (nome && telefone) {
-            // Processar múltiplos telefones separados por /
-            const phones = telefone.split('/').map(p => p.trim()).filter(p => p);
-            
-            phones.forEach(phone => {
-                contacts.push({
-                    nome: nome,
-                    telefone: phone
-                });
+        stream
+            .pipe(csv())
+            .on('data', (row) => {
+                const contact = normalizeContact(row);
+                if (contact.telefone) {
+                    contacts.push(contact);
+                }
+            })
+            .on('end', () => {
+                console.log('CSV parsing complete:', contacts.length, 'contacts');
+                resolve(contacts);
+            })
+            .on('error', (error) => {
+                console.error('CSV parsing error:', error);
+                reject(error);
             });
-        }
     });
-    
-    return contacts;
 }
 
-function parseContactFile(filePath) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    
-    if (ext === 'csv') {
-        return parseCSV(filePath);
-    } else if (ext === 'xlsx' || ext === 'xls') {
-        return parseXLSX(filePath);
-    } else {
-        throw new Error('Formato de arquivo não suportado. Use CSV ou XLSX');
+function parseExcel(filePath) {
+    try {
+        const workbook = XLSX.readFile(filePath);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(worksheet);
+
+        const contacts = data
+            .map(row => normalizeContact(row))
+            .filter(contact => contact.telefone);
+
+        console.log('Excel parsing complete:', contacts.length, 'contacts');
+        return contacts;
+
+    } catch (error) {
+        console.error('Excel parsing error:', error);
+        throw error;
     }
 }
 
-module.exports = { parseContactFile };
+function normalizeContact(row) {
+    // Tentar diferentes nomes de colunas
+    const nome = row.nome || row.Nome || row.NOME || row.name || row.Name || row.NAME || '';
+    const telefone = row.telefone || row.Telefone || row.TELEFONE || row.phone || row.Phone || row.PHONE || row.celular || row.Celular || '';
+
+    // Limpar telefone (remover caracteres não numéricos)
+    const telefoneLimpo = telefone.toString().replace(/\D/g, '');
+
+    return {
+        nome: nome.toString().trim(),
+        telefone: telefoneLimpo,
+        // Campos opcionais
+        email: row.email || row.Email || row.EMAIL || '',
+        cidade: row.cidade || row.Cidade || row.CIDADE || '',
+        estado: row.estado || row.Estado || row.ESTADO || row.uf || row.UF || ''
+    };
+}
+
+module.exports = { parseContactsFile };
