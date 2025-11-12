@@ -4,7 +4,7 @@
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Tabela de usuários
+-- Tabela de usuÃ¡rios
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_username ON users(username);
 
--- Tabela de configurações
+-- Tabela de configuraÃ§Ãµes
 CREATE TABLE IF NOT EXISTS user_configs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS campaign_contacts (
 
 CREATE INDEX idx_campaign_contacts_campaign_id ON campaign_contacts(campaign_id);
 
--- Função para normalizar telefone
+-- FunÃ§Ã£o para normalizar telefone
 CREATE OR REPLACE FUNCTION normalize_phone(phone TEXT)
 RETURNS TEXT AS $$
 BEGIN
