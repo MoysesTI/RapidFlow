@@ -1,19 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const {
-    uploadContacts,
-    createCampaign,
-    listCampaigns,
-    getCampaignDetails
-} = require('../controllers/campaignController');
 const { authenticateToken } = require('../middleware/auth');
+const campaignController = require('../controllers/campaignController');
 
-// REMOVIDO: configuração de multer (agora está no controller)
-
-// uploadContacts já vem com multer.memoryStorage() configurado
-router.post('/upload-contacts', authenticateToken, ...uploadContacts);
-router.post('/', authenticateToken, createCampaign);
-router.get('/', authenticateToken, listCampaigns);
-router.get('/:id', authenticateToken, getCampaignDetails);
+router.post('/upload-contacts', authenticateToken, campaignController.uploadContacts);
+router.post('/', authenticateToken, campaignController.createCampaign);
+router.get('/', authenticateToken, campaignController.listCampaigns);
+router.get('/:id', authenticateToken, campaignController.getCampaignDetails);
+router.post('/:id/execute', authenticateToken, campaignController.executeCampaign);
 
 module.exports = router;

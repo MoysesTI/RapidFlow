@@ -1,0 +1,92 @@
+{
+  "name": "RapidFlow Campaign v2.1 - FIXED",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prisma-campaign",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\n\nif (body.test === true) {\n  return [{ json: { success: true, message: 'Conexão OK' } }];\n}\n\nconst contacts = body.contacts || [];\nconst config = body.config || {};\nconst metadata = body.metadata || {};\n\nconst apiKey = config.evolutionApiKey || config.apiKey;\n\nconsole.log('Config received:', JSON.stringify(config));\n\nif (!apiKey) {\n  return [{ json: { error: true, message: 'API Key não fornecida', configReceived: config } }];\n}\n\nreturn contacts.map((contact, index) => ({\n  json: {\n    id: index + 1,\n    nome: contact.nome,\n    telefone: String(contact.telefone).replace(/\\D/g, '').length <= 11 ? '55' + String(contact.telefone).replace(/\\D/g, '') : String(contact.telefone).replace(/\\D/g, ''),\n    evolutionEndpoint: config.evolutionEndpoint,\n    apiKey: apiKey,\n    imageUrl: config.imageUrl,\n    openaiKey: config.openaiApiKey,\n    openaiModel: config.openaiModel || 'gpt-4',\n    systemPrompt: config.systemPrompt || 'Olá',\n    delay_calculado: Math.floor(Math.random() * ((config.delayMax || 380) - (config.delayMin || 140) + 1)) + (config.delayMin || 140),\n    total: contacts.length,\n    is_last: index === contacts.length - 1,\n    campaignId: metadata.campaignId\n  }\n}));"
+      },
+      "id": "process",
+      "name": "Process",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\":true,\"message\":\"Campanha recebida\",\"total\":{{$json.total}}}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {},
+      "id": "split",
+      "name": "Split",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.evolutionEndpoint}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "={{$json.apiKey}}"},
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "number", "value": "={{$json.telefone}}"},
+            {"name": "mediatype", "value": "image"},
+            {"name": "caption", "value": "Olá {{$json.nome}}!"},
+            {"name": "media", "value": "={{$json.imageUrl}}"}
+          ]
+        }
+      },
+      "id": "send",
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "amount": "={{$json.delay_calculado}}"
+      },
+      "id": "wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Process"}]]},
+    "Process": {"main": [[{"node": "Respond"}, {"node": "Split"}]]},
+    "Split": {"main": [[{"node": "Send WhatsApp"}], []]},
+    "Send WhatsApp": {"main": [[{"node": "Wait"}]]},
+    "Wait": {"main": [[{"node": "Split"}]]}
+  }
+}

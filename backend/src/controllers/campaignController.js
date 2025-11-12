@@ -1,9 +1,7 @@
 const multer = require('multer');
-const path = require('path');
 const { parseContactsBuffer } = require('../utils/fileParser');
 const { pool } = require('../config/database');
-
-console.log('==== CAMPAIGN CONTROLLER WITH MEMORY STORAGE - V3 ====');
+const axios = require('axios');
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -13,26 +11,13 @@ const upload = multer({
 exports.uploadContacts = [
     upload.single('file'),
     async (req, res) => {
-        console.log('==== UPLOAD START (MEMORY) ====');
-        
         try {
             if (!req.file) {
-                console.log('No file received');
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'No file uploaded' 
-                });
+                return res.status(400).json({ success: false, message: 'No file uploaded' });
             }
-
-            console.log('File:', req.file.originalname);
-            console.log('Size:', req.file.size, 'bytes');
-            console.log('Buffer length:', req.file.buffer.length);
 
             const contacts = await parseContactsBuffer(req.file.buffer, req.file.originalname);
             
-            console.log('Contacts loaded:', contacts.length);
-            console.log('==== UPLOAD SUCCESS ====');
-
             res.json({
                 success: true,
                 message: `${contacts.length} contatos carregados com sucesso`,
@@ -40,13 +25,8 @@ exports.uploadContacts = [
             });
 
         } catch (error) {
-            console.error('==== UPLOAD ERROR ====');
-            console.error('Error:', error.message);
-
-            res.status(500).json({
-                success: false,
-                message: 'Erro: ' + error.message
-            });
+            console.error('Upload error:', error);
+            res.status(500).json({ success: false, message: 'Erro: ' + error.message });
         }
     }
 ];
@@ -56,15 +36,8 @@ exports.createCampaign = async (req, res) => {
         const { name, contacts, config } = req.body;
         const userId = req.user.userId;
 
-        console.log('Creating campaign for user:', userId);
-        console.log('Contacts count:', contacts?.length);
-        console.log('Config received:', JSON.stringify(config));
-
         if (!contacts || contacts.length === 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Nenhum contato fornecido' 
-            });
+            return res.status(400).json({ success: false, message: 'Nenhum contato fornecido' });
         }
 
         // Buscar configurações do usuário
@@ -73,12 +46,14 @@ exports.createCampaign = async (req, res) => {
             [userId]
         );
 
-        // Mesclar configurações: prioridade para config do body, depois user_configs, depois env
+        // Usar configurações do usuário se existirem, senão usar do body
+        const userConfig = userConfigResult.rows[0] || {};
+        
         const finalConfig = {
-            webhookUrl: config.webhookUrl || userConfigResult.rows[0]?.webhook_url || process.env.DEFAULT_WEBHOOK_URL,
-            evolutionEndpoint: config.evolutionEndpoint || userConfigResult.rows[0]?.evolution_endpoint || process.env.DEFAULT_EVOLUTION_ENDPOINT,
-            evolutionApiKey: config.apiKey || userConfigResult.rows[0]?.evolution_api_key || process.env.DEFAULT_EVOLUTION_API_KEY,
-            openaiApiKey: config.openaiKey || userConfigResult.rows[0]?.openai_api_key || process.env.DEFAULT_OPENAI_API_KEY,
+            webhookUrl: userConfig.webhook_url || config.webhookUrl || '',
+            evolutionEndpoint: userConfig.evolution_endpoint || config.evolutionEndpoint || '',
+            evolutionApiKey: userConfig.evolution_api_key || config.apiKey || '',
+            openaiApiKey: userConfig.openai_api_key || config.openaiKey || '',
             imageUrl: config.imageUrl || '',
             delayMin: config.delayMin || 140,
             delayMax: config.delayMax || 380,
@@ -97,8 +72,6 @@ exports.createCampaign = async (req, res) => {
             [userId, campaignId, name, JSON.stringify(contacts), JSON.stringify(finalConfig), 'pending', contacts.length]
         );
 
-        console.log('Campaign created:', result.rows[0].campaign_id);
-
         res.json({ 
             success: true, 
             message: 'Campanha criada com sucesso', 
@@ -107,40 +80,82 @@ exports.createCampaign = async (req, res) => {
 
     } catch (error) {
         console.error('Error creating campaign:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.executeCampaign = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.userId;
+
+        const result = await pool.query(
+            'SELECT * FROM campaigns WHERE id = $1 AND user_id = $2',
+            [id, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Campanha não encontrada' });
+        }
+
+        const campaign = result.rows[0];
+        const config = campaign.config;
+        const contacts = campaign.contacts;
+
+        const webhookPayload = {
+            contacts: contacts,
+            config: {
+                evolutionEndpoint: config.evolutionEndpoint,
+                evolutionApiKey: config.evolutionApiKey,
+                openaiApiKey: config.openaiApiKey,
+                imageUrl: config.imageUrl || '',
+                delayMin: config.delayMin || 140,
+                delayMax: config.delayMax || 380,
+                openaiModel: config.openaiModel || 'gpt-4',
+                systemPrompt: config.systemPrompt || 'Olá, tudo bem?'
+            },
+            metadata: {
+                totalContacts: contacts.length,
+                startTime: new Date().toISOString(),
+                campaignId: campaign.campaign_id
+            }
+        };
+
+        console.log('Sending to webhook:', config.webhookUrl);
+
+        await axios.post(config.webhookUrl, webhookPayload, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000
         });
+
+        await pool.query(
+            'UPDATE campaigns SET status = $1, updated_at = NOW() WHERE id = $2',
+            ['running', id]
+        );
+
+        res.json({
+            success: true,
+            message: 'Campanha iniciada com sucesso',
+            campaignId: campaign.campaign_id
+        });
+
+    } catch (error) {
+        console.error('Error executing campaign:', error);
+        res.status(500).json({ success: false, message: 'Erro ao executar campanha: ' + error.message });
     }
 };
 
 exports.listCampaigns = async (req, res) => {
     try {
         const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
-
-        let query = 'SELECT id, campaign_id, name, status, total_contacts, sent_count, error_count, created_at FROM campaigns';
-        let params = [];
-
-        if (!isAdmin) {
-            query += ' WHERE user_id = $1';
-            params.push(userId);
-        }
-
-        query += ' ORDER BY created_at DESC LIMIT 50';
-        const result = await pool.query(query, params);
-
-        res.json({ 
-            success: true, 
-            campaigns: result.rows 
-        });
-
+        const result = await pool.query(
+            'SELECT id, campaign_id, name, status, total_contacts, sent_count, error_count, created_at FROM campaigns WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+            [userId]
+        );
+        res.json({ success: true, campaigns: result.rows });
     } catch (error) {
         console.error('Error listing campaigns:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Erro ao listar campanhas' 
-        });
+        res.status(500).json({ success: false, message: 'Erro ao listar campanhas' });
     }
 };
 
@@ -148,35 +163,18 @@ exports.getCampaignDetails = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
-
-        let query = 'SELECT * FROM campaigns WHERE id = $1';
-        let params = [id];
-
-        if (!isAdmin) {
-            query += ' AND user_id = $2';
-            params.push(userId);
-        }
-
-        const result = await pool.query(query, params);
+        const result = await pool.query(
+            'SELECT * FROM campaigns WHERE id = $1 AND user_id = $2',
+            [id, userId]
+        );
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Campanha não encontrada' 
-            });
+            return res.status(404).json({ success: false, message: 'Campanha não encontrada' });
         }
 
-        res.json({ 
-            success: true, 
-            campaign: result.rows[0] 
-        });
-
+        res.json({ success: true, campaign: result.rows[0] });
     } catch (error) {
         console.error('Error fetching campaign:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Erro ao buscar campanha' 
-        });
+        res.status(500).json({ success: false, message: 'Erro ao buscar campanha' });
     }
 };
