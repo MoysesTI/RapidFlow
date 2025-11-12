@@ -1,51 +1,49 @@
-﻿const multer = require('multer');
+const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { parseContactsFile } = require('../utils/fileParser');
 const { pool } = require('../config/database');
 
-// Determinar pasta de upload baseado no ambiente
-const getUploadDir = () => {
-    if (process.env.NODE_ENV === 'production') {
-        const tmpDir = path.join(os.tmpdir(), 'rapidflow-uploads');
-        if (!fs.existsSync(tmpDir)) {
-            fs.mkdirSync(tmpDir, { recursive: true });
-            console.log(`📁 Pasta temp criada: ${tmpDir}`);
-        }
-        return tmpDir;
-    } else {
-        const localDir = path.join(__dirname, '../../uploads');
-        if (!fs.existsSync(localDir)) {
-            fs.mkdirSync(localDir, { recursive: true });
-        }
-        return localDir;
-    }
-};
+// Criar pasta de uploads no /tmp (Render)
+const uploadDir = path.join(os.tmpdir(), 'rapidflow-uploads');
 
-// Configurar multer
+// Garantir que a pasta existe
+try {
+    if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log('Upload directory created:', uploadDir);
+    }
+} catch (error) {
+    console.error('Error creating upload directory:', error);
+}
+
+// Configurar Multer
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadDir = getUploadDir();
-        console.log(`📂 Upload dir: ${uploadDir}`);
+    destination: function (req, file, cb) {
+        console.log('Saving file to:', uploadDir);
         cb(null, uploadDir);
     },
-    filename: (req, file, cb) => {
+    filename: function (req, file, cb) {
         const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
-        console.log(`📝 Nome do arquivo: ${uniqueName}`);
+        console.log('Generated filename:', uniqueName);
         cb(null, uniqueName);
     }
 });
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB
+    },
     fileFilter: (req, file, cb) => {
+        const allowedExts = ['.csv', '.xlsx', '.xls'];
         const ext = path.extname(file.originalname).toLowerCase();
-        if (['.csv', '.xlsx', '.xls'].includes(ext)) {
+        
+        if (allowedExts.includes(ext)) {
             cb(null, true);
         } else {
-            cb(new Error('Tipo de arquivo não permitido'));
+            cb(new Error('Only CSV and Excel files are allowed'));
         }
     }
 });
@@ -55,45 +53,65 @@ exports.uploadContacts = [
     upload.single('file'),
     async (req, res) => {
         try {
+            console.log('=== UPLOAD STARTED ===');
+            
             if (!req.file) {
+                console.log('No file received');
                 return res.status(400).json({
                     success: false,
-                    message: 'Nenhum arquivo enviado'
+                    message: 'No file uploaded'
                 });
             }
 
-            console.log(`✅ Arquivo recebido: ${req.file.originalname}`);
-            console.log(`📂 Salvo em: ${req.file.path}`);
-            console.log(`📊 Tamanho: ${req.file.size} bytes`);
+            console.log('File received:', req.file.originalname);
+            console.log('File path:', req.file.path);
+            console.log('File size:', req.file.size, 'bytes');
 
-            // Verificar se arquivo existe
+            // Verificar se o arquivo existe
             if (!fs.existsSync(req.file.path)) {
-                throw new Error(`Arquivo não encontrado: ${req.file.path}`);
+                throw new Error('File not found after upload: ' + req.file.path);
             }
+
+            console.log('File exists, parsing...');
 
             // Parse do arquivo
             const contacts = await parseContactsFile(req.file.path);
 
-            // Limpar arquivo temporário
-            fs.unlinkSync(req.file.path);
-            console.log(`🗑️ Arquivo temporário removido`);
+            console.log('Parsed contacts:', contacts.length);
+
+            // Remover arquivo temporário
+            try {
+                fs.unlinkSync(req.file.path);
+                console.log('Temporary file deleted');
+            } catch (err) {
+                console.error('Error deleting temp file:', err);
+            }
+
+            console.log('=== UPLOAD COMPLETED ===');
 
             res.json({
                 success: true,
-                message: `${contacts.length} contatos carregados!`,
+                message: contacts.length + ' contacts loaded successfully!',
                 contacts: contacts
             });
 
         } catch (error) {
-            console.error('❌ Erro no upload:', error);
+            console.error('=== UPLOAD ERROR ===');
+            console.error('Error:', error.message);
+            console.error('Stack:', error.stack);
             
+            // Limpar arquivo em caso de erro
             if (req.file && fs.existsSync(req.file.path)) {
-                fs.unlinkSync(req.file.path);
+                try {
+                    fs.unlinkSync(req.file.path);
+                } catch (err) {
+                    console.error('Error cleaning up file:', err);
+                }
             }
 
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Error processing file: ' + error.message
             });
         }
     }
@@ -103,12 +121,12 @@ exports.uploadContacts = [
 exports.createCampaign = async (req, res) => {
     try {
         const { name, contacts, config } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
 
         if (!contacts || contacts.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Nenhum contato fornecido'
+                message: 'No contacts provided'
             });
         }
 
@@ -121,15 +139,15 @@ exports.createCampaign = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Campanha criada!',
+            message: 'Campaign created successfully!',
             campaign: result.rows[0]
         });
 
     } catch (error) {
-        console.error('Erro ao criar campanha:', error);
+        console.error('Error creating campaign:', error);
         res.status(500).json({
             success: false,
-            message: error.message
+            message: 'Error creating campaign: ' + error.message
         });
     }
 };
@@ -137,7 +155,7 @@ exports.createCampaign = async (req, res) => {
 // Listar campanhas
 exports.listCampaigns = async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user.userId;
         const isAdmin = req.user.role === 'admin';
 
         let query = 'SELECT id, name, status, total_contacts, sent_count, error_count, created_at FROM campaigns';
@@ -158,10 +176,10 @@ exports.listCampaigns = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erro ao listar campanhas:', error);
+        console.error('Error listing campaigns:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao listar campanhas'
+            message: 'Error listing campaigns'
         });
     }
 };
@@ -170,7 +188,7 @@ exports.listCampaigns = async (req, res) => {
 exports.getCampaignDetails = async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = req.user.id;
+        const userId = req.user.userId;
         const isAdmin = req.user.role === 'admin';
 
         let query = 'SELECT * FROM campaigns WHERE id = $1';
@@ -186,7 +204,7 @@ exports.getCampaignDetails = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Campanha não encontrada'
+                message: 'Campaign not found'
             });
         }
 
@@ -196,10 +214,10 @@ exports.getCampaignDetails = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erro ao buscar campanha:', error);
+        console.error('Error fetching campaign:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao buscar campanha'
+            message: 'Error fetching campaign'
         });
     }
 };
