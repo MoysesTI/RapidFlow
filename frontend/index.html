@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -56,47 +56,57 @@
             <div class="card config-card">
                 <h3>Configurações da Campanha</h3>
                 <form id="campaignForm">
+                    
+                    <!-- WEBHOOK -->
                     <div class="form-group">
-                        <label>Webhook n8n</label>
-                        <input type="url" id="webhookUrl" placeholder="https://seu-n8n.com/webhook/campanha" required>
-                        <small>Cole aqui a URL do webhook do seu n8n</small>
+                        <label>🌐 Webhook n8n</label>
+                        <input type="url" id="webhookUrl" placeholder="https://webhook.automacaoklyon.com/webhook/prisma-campaign" required>
+                        <small>URL do webhook do n8n</small>
                     </div>
 
-                    <div class="admin-only">
-                        <div class="form-group">
-                            <label>Evolution API Endpoint</label>
-                            <input type="url" id="evolutionEndpoint">
-                        </div>
-                        <div class="form-group">
-                            <label>API Key (Evolution)</label>
-                            <input type="text" id="apiKey">
-                            <small>Apenas administradores podem editar</small>
-                        </div>
-                        <div class="form-group">
-                            <label>OpenAI API Key</label>
-                            <input type="password" id="openaiKey" placeholder="sk-...">
-                            <small>Necessário para geração de mensagens personalizadas</small>
-                        </div>
-                    </div>
-
+                    <!-- EVOLUTION ENDPOINT - TODOS PODEM VER/EDITAR -->
                     <div class="form-group">
-                        <label>URL da Imagem Promocional</label>
-                        <input type="url" id="imageUrl" placeholder="https://...">
+                        <label>🔗 Evolution API - Endpoint</label>
+                        <input type="url" id="evolutionEndpoint" placeholder="https://evoapi.automacaoklyon.com/message/sendMedia/prismabotmensagem">
+                        <small>URL completa da Evolution API</small>
+                    </div>
+                    
+                    <!-- EVOLUTION API KEY - TODOS PODEM VER/EDITAR -->
+                    <div class="form-group">
+                        <label>🔑 Evolution API - Key</label>
+                        <input type="text" id="apiKey" placeholder="FBAF0775D817-45C7-9ACC-F7720DDAA9E2">
+                        <small>Chave de autenticação da Evolution API</small>
+                    </div>
+                    
+                    <!-- OPENAI KEY - TODOS PODEM VER/EDITAR -->
+                    <div class="form-group">
+                        <label>🤖 OpenAI API Key (Opcional)</label>
+                        <input type="password" id="openaiKey" placeholder="sk-...">
+                        <small>Para personalização de mensagens com IA</small>
                     </div>
 
+                    <!-- IMAGEM -->
+                    <div class="form-group">
+                        <label>🖼️ URL da Imagem Promocional</label>
+                        <input type="url" id="imageUrl" placeholder="https://i.ibb.co/...">
+                        <small>Link da imagem que será enviada</small>
+                    </div>
+
+                    <!-- DELAYS -->
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Delay Mínimo (segundos)</label>
+                            <label>⏱️ Delay Mínimo (segundos)</label>
                             <input type="number" id="delayMin" value="140" min="10" max="600">
                         </div>
                         <div class="form-group">
-                            <label>Delay Máximo (segundos)</label>
+                            <label>⏱️ Delay Máximo (segundos)</label>
                             <input type="number" id="delayMax" value="380" min="10" max="600">
                         </div>
                     </div>
 
+                    <!-- MODELO -->
                     <div class="form-group">
-                        <label>Modelo OpenAI</label>
+                        <label>🧠 Modelo OpenAI</label>
                         <select id="openaiModel">
                             <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
                             <option value="gpt-4" selected>GPT-4</option>
@@ -104,11 +114,13 @@
                         </select>
                     </div>
 
+                    <!-- PROMPT -->
                     <div class="form-group">
-                        <label>Prompt de Personalização</label>
+                        <label>💬 Prompt de Personalização</label>
                         <textarea id="systemPrompt" rows="6" placeholder="Instruções para geração de mensagens..."></textarea>
                     </div>
 
+                    <!-- BOTÕES -->
                     <div class="button-group">
                         <button type="button" class="btn btn-secondary" onclick="uploadContacts()">Carregar Contatos</button>
                         <button type="button" class="btn btn-info" onclick="testConnection()">Testar Conexão</button>
