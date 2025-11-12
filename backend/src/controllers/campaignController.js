@@ -5,79 +5,75 @@ const os = require('os');
 const { parseContactsFile } = require('../utils/fileParser');
 const { pool } = require('../config/database');
 
-const uploadDir = process.env.UPLOAD_DIR || path.join(os.tmpdir(), 'rapidflow-uploads');
+console.log('==== CAMPAIGN CONTROLLER LOADED ====');
 
-try {
-    if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-        console.log('Upload directory created:', uploadDir);
-    }
-} catch (error) {
-    console.error('Error creating upload directory:', error);
+const UPLOAD_DIR = '/tmp/rapidflow-uploads';
+
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    console.log('Upload dir created:', UPLOAD_DIR);
 }
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        console.log('Destination:', uploadDir);
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const name = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
-        console.log('Filename:', name);
-        cb(null, name);
-    }
-});
-
 const upload = multer({
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (['.csv', '.xlsx', '.xls'].includes(ext)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Only CSV and Excel files allowed'));
-        }
-    }
+    dest: UPLOAD_DIR,
+    limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 exports.uploadContacts = [
     upload.single('file'),
     async (req, res) => {
-        console.log('=== UPLOAD START ===');
+        console.log('==== UPLOAD START ====');
+        
+        let filePath = null;
+        
         try {
             if (!req.file) {
                 console.log('No file received');
                 return res.status(400).json({ success: false, message: 'No file uploaded' });
             }
 
-            console.log('File:', req.file.originalname);
-            console.log('Path:', req.file.path);
-            console.log('Size:', req.file.size);
+            filePath = req.file.path;
+            
+            console.log('Original name:', req.file.originalname);
+            console.log('File path:', filePath);
+            console.log('Destination:', req.file.destination);
+            console.log('File exists:', fs.existsSync(filePath));
 
-            if (!fs.existsSync(req.file.path)) {
-                throw new Error('File not found: ' + req.file.path);
+            if (!fs.existsSync(filePath)) {
+                throw new Error('File not saved: ' + filePath);
             }
 
-            const contacts = await parseContactsFile(req.file.path);
-            console.log('Contacts parsed:', contacts.length);
+            const contacts = await parseContactsFile(filePath);
+            console.log('Contacts loaded:', contacts.length);
 
-            fs.unlinkSync(req.file.path);
-            console.log('Temp file deleted');
-            console.log('=== UPLOAD COMPLETE ===');
+            fs.unlinkSync(filePath);
+            console.log('File deleted');
+            console.log('==== UPLOAD SUCCESS ====');
 
-            res.json({ success: true, message: contacts.length + ' contacts loaded', contacts: contacts });
+            res.json({
+                success: true,
+                message: contacts.length + ' contacts loaded successfully',
+                contacts: contacts
+            });
 
         } catch (error) {
-            console.error('=== UPLOAD ERROR ===');
-            console.error('Error:', error.message);
+            console.error('==== UPLOAD ERROR ====');
+            console.error('Error message:', error.message);
             console.error('Stack:', error.stack);
             
-            if (req.file && fs.existsSync(req.file.path)) {
-                try { fs.unlinkSync(req.file.path); } catch (err) {}
+            if (filePath && fs.existsSync(filePath)) {
+                try {
+                    fs.unlinkSync(filePath);
+                    console.log('Cleanup: file deleted');
+                } catch (cleanupErr) {
+                    console.error('Cleanup error:', cleanupErr);
+                }
             }
 
-            res.status(500).json({ success: false, message: error.message });
+            res.status(500).json({
+                success: false,
+                message: 'Error: ' + error.message
+            });
         }
     }
 ];
@@ -88,7 +84,7 @@ exports.createCampaign = async (req, res) => {
         const userId = req.user.userId;
 
         if (!contacts || contacts.length === 0) {
-            return res.status(400).json({ success: false, message: 'No contacts provided' });
+            return res.status(400).json({ success: false, message: 'No contacts' });
         }
 
         const result = await pool.query(
