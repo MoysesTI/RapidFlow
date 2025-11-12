@@ -3,9 +3,8 @@ const path = require('path');
 const { parseContactsBuffer } = require('../utils/fileParser');
 const { pool } = require('../config/database');
 
-console.log('==== CAMPAIGN CONTROLLER WITH MEMORY STORAGE ====');
+console.log('==== CAMPAIGN CONTROLLER WITH MEMORY STORAGE - V2 ====');
 
-// Usar memória ao invés de disco
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 }
@@ -30,15 +29,15 @@ exports.uploadContacts = [
             console.log('Mimetype:', req.file.mimetype);
             console.log('Buffer length:', req.file.buffer.length);
 
-            // Processar arquivo direto da memória
             const contacts = await parseContactsBuffer(req.file.buffer, req.file.originalname);
             
             console.log('Contacts loaded:', contacts.length);
+            console.log('Sample contact:', contacts[0]);
             console.log('==== UPLOAD SUCCESS ====');
 
             res.json({
                 success: true,
-                message: contacts.length + ' contacts loaded successfully',
+                message: `${contacts.length} contacts loaded successfully`,
                 contacts: contacts
             });
 
@@ -67,11 +66,25 @@ exports.createCampaign = async (req, res) => {
             });
         }
 
+        // Buscar configurações reais do usuário (com dados do admin)
+        const userConfig = await pool.query(
+            'SELECT * FROM user_configs WHERE user_id = $1',
+            [userId]
+        );
+
+        // Mesclar com configurações padrão se necessário
+        const finalConfig = {
+            ...config,
+            evolutionEndpoint: userConfig.rows[0]?.evolution_endpoint || process.env.DEFAULT_EVOLUTION_ENDPOINT,
+            evolutionApiKey: userConfig.rows[0]?.evolution_api_key || process.env.DEFAULT_EVOLUTION_API_KEY,
+            openaiApiKey: userConfig.rows[0]?.openai_api_key || process.env.DEFAULT_OPENAI_API_KEY
+        };
+
         const result = await pool.query(
             `INSERT INTO campaigns (user_id, name, contacts, config, status, total_contacts, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
              RETURNING id, name, status, created_at`,
-            [userId, name, JSON.stringify(contacts), JSON.stringify(config), 'pending', contacts.length]
+            [userId, name, JSON.stringify(contacts), JSON.stringify(finalConfig), 'pending', contacts.length]
         );
 
         res.json({ 
