@@ -30,3 +30,9 @@ build/
 # Database
 *.sql.backup
 *.db
+
+# Uploads temporários
+uploads/
+*.csv
+*.xlsx
+*.xls
