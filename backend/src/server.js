@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -13,6 +13,9 @@ const configRoutes = require('./routes/config');
 const campaignRoutes = require('./routes/campaigns');
 
 const app = express();
+
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 5000;
 
 // ===== CORS CONFIGURATION =====
