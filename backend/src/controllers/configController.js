@@ -45,35 +45,65 @@ async function getConfig(req, res) {
 async function updateConfig(req, res) {
     try {
         const userId = req.user.userId;
-        const { webhookUrl, evolutionEndpoint, evolutionApiKey, openaiApiKey } = req.body;
-        
+        const {
+            webhookUrl,
+            evolutionEndpoint,
+            evolutionApiKey,
+            openaiApiKey,
+            useAI,
+            maxRetries,
+            delayMin,
+            delayMax,
+            openaiModel,
+            systemPrompt
+        } = req.body;
+
         console.log('Updating config for user:', userId);
-        
+
         await pool.query(
             `INSERT INTO user_configs (
-                user_id, webhook_url, evolution_endpoint, evolution_api_key, openai_api_key, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (user_id) 
-            DO UPDATE SET 
-                webhook_url = EXCLUDED.webhook_url,
-                evolution_endpoint = EXCLUDED.evolution_endpoint,
-                evolution_api_key = EXCLUDED.evolution_api_key,
-                openai_api_key = EXCLUDED.openai_api_key,
+                user_id, webhook_url, evolution_endpoint, evolution_api_key, openai_api_key,
+                use_ai, max_retries, delay_min, delay_max, openai_model, system_prompt, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                webhook_url = COALESCE(EXCLUDED.webhook_url, user_configs.webhook_url),
+                evolution_endpoint = COALESCE(EXCLUDED.evolution_endpoint, user_configs.evolution_endpoint),
+                evolution_api_key = COALESCE(EXCLUDED.evolution_api_key, user_configs.evolution_api_key),
+                openai_api_key = COALESCE(EXCLUDED.openai_api_key, user_configs.openai_api_key),
+                use_ai = COALESCE(EXCLUDED.use_ai, user_configs.use_ai),
+                max_retries = COALESCE(EXCLUDED.max_retries, user_configs.max_retries),
+                delay_min = COALESCE(EXCLUDED.delay_min, user_configs.delay_min),
+                delay_max = COALESCE(EXCLUDED.delay_max, user_configs.delay_max),
+                openai_model = COALESCE(EXCLUDED.openai_model, user_configs.openai_model),
+                system_prompt = COALESCE(EXCLUDED.system_prompt, user_configs.system_prompt),
                 updated_at = NOW()`,
-            [userId, webhookUrl, evolutionEndpoint, evolutionApiKey, openaiApiKey]
+            [
+                userId,
+                webhookUrl,
+                evolutionEndpoint,
+                evolutionApiKey,
+                openaiApiKey,
+                useAI !== undefined ? useAI : true,
+                maxRetries || 3,
+                delayMin || 140,
+                delayMax || 380,
+                openaiModel || 'gpt-4',
+                systemPrompt || 'Olá, tudo bem?'
+            ]
         );
-        
+
         const result = await pool.query(
             'SELECT * FROM user_configs WHERE user_id = $1',
             [userId]
         );
-        
+
         res.json({
             success: true,
             message: 'Configurações atualizadas com sucesso!',
             config: result.rows[0]
         });
-        
+
     } catch (error) {
         console.error('Erro ao atualizar config:', error);
         res.status(500).json({ error: true, message: 'Erro ao atualizar configurações' });

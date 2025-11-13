@@ -1,0 +1,438 @@
+{
+  "name": "RapidFlow - Workflow Melhorado v2.5",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prisma-campaign",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook-receber",
+      "name": "Webhook - Receber Campanha",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "webhookId": "prisma-campaign-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "options-check",
+              "leftValue": "={{ $json.headers['request-method'] || $json.method || 'POST' }}",
+              "rightValue": "OPTIONS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [420, 300],
+      "id": "check-options",
+      "name": "É OPTIONS?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\": \"ok\", \"cors\": \"enabled\"}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Access-Control-Allow-Origin", "value": "*"},
+              {"name": "Access-Control-Allow-Methods", "value": "POST, GET, OPTIONS"},
+              {"name": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [640, 200],
+      "id": "resposta-options",
+      "name": "Resposta OPTIONS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================\n// PROCESSAR PAYLOAD - VERSÃO MELHORADA\n// =====================================================\n\nconst body = $input.item.json.body || $input.item.json;\n\n// Teste de conexão\nif (body.test === true) {\n  return [{\n    json: {\n      success: true,\n      message: '✅ Conexão OK!',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Extrair dados\nconst contacts = body.contacts || [];\nconst config = body.config || {};\nconst metadata = body.metadata || {};\n\n// Validações\nif (!contacts || contacts.length === 0) {\n  throw new Error('Nenhum contato encontrado no payload');\n}\n\nconst apiKey = config.evolutionApiKey || config.apiKey;\nconst endpoint = config.evolutionEndpoint;\nconst backendUrl = config.backendUrl || 'https://rapidflow-backend.onrender.com';\nconst useAI = config.useAI !== false; // Default: true\nconst maxRetries = config.maxRetries || 3;\n\nif (!apiKey) throw new Error('API Key da Evolution não fornecida');\nif (!endpoint) throw new Error('Evolution endpoint não fornecido');\n\nconsole.log('\\n' + '='.repeat(60));\nconsole.log('🚀 NOVA CAMPANHA INICIADA');\nconsole.log('='.repeat(60));\nconsole.log(`📊 Campaign ID: ${metadata.campaignId}`);\nconsole.log(`👥 Total de Contatos: ${contacts.length}`);\nconsole.log(`🤖 IA Ativada: ${useAI ? 'SIM' : 'NÃO'}`);\nconsole.log(`🔄 Max Retries: ${maxRetries}`);\nconsole.log(`🔙 Backend URL: ${backendUrl}`);\nconsole.log('='.repeat(60) + '\\n');\n\n// Processar contatos\nreturn contacts.map((contact, index) => {\n  const delayMin = config.delayMin || 140;\n  const delayMax = config.delayMax || 380;\n  const delay = Math.floor(Math.random() * (delayMax - delayMin + 1)) + delayMin;\n  \n  let telefone = String(contact.telefone).replace(/[^0-9]+/g, '');\n  if (telefone.length <= 11) {\n    telefone = '55' + telefone;\n  }\n  \n  return {\n    json: {\n      // Dados do contato\n      id: index + 1,\n      nome: contact.nome,\n      telefone: telefone,\n      \n      // Config Evolution\n      evolutionEndpoint: endpoint,\n      apiKey: apiKey,\n      imageUrl: config.imageUrl || '',\n      \n      // Config OpenAI\n      openaiKey: config.openaiApiKey || '',\n      openaiModel: config.openaiModel || 'gpt-4',\n      systemPrompt: config.systemPrompt || 'Olá!',\n      useAI: useAI,\n      \n      // Controle\n      delay_calculado: delay,\n      maxRetries: maxRetries,\n      currentRetry: 0,\n      total: contacts.length,\n      is_first: index === 0,\n      is_last: index === contacts.length - 1,\n      \n      // Metadata\n      campaignId: metadata.campaignId,\n      backendUrl: backendUrl,\n      startTime: metadata.startTime\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 400],
+      "id": "processar-payload",
+      "name": "Processar Payload"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"✅ Campanha recebida e em processamento\",\n  \"campaignId\": \"{{ $json.campaignId }}\",\n  \"totalContacts\": {{ $json.total }},\n  \"useAI\": {{ $json.useAI }},\n  \"estimatedTime\": \"{{ Math.round(($json.total * 200) / 60) }} minutos\"\n}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {"name": "Access-Control-Allow-Origin", "value": "*"}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [860, 300],
+      "id": "resposta-frontend",
+      "name": "Resposta ao Front-End"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Process One by One",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1080, 400],
+      "id": "split-batches"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.useAI }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1300, 400],
+      "id": "check-use-ai",
+      "name": "Usar IA?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.systemPrompt }}",
+        "options": {
+          "systemMessage": "Você é um especialista em comunicação. Reescreva a mensagem de forma ÚNICA e NATURAL para cada destinatário.\n\nREGRAS:\n1. SEMPRE inicie com saudação personalizada usando: {{ $json.nome }}\n2. PRESERVE informações essenciais (links, valores, datas)\n3. VARIE estrutura, vocabulário e emojis\n4. EVITE soar robótico\n5. Máximo 300 caracteres\n\nRetorne APENAS a mensagem, sem aspas ou explicações."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1520, 300],
+      "id": "ai-agent",
+      "name": "AI Agent - Gerar Mensagem"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Se não usar IA, apenas substitui {{nome}}\nconst item = $input.item.json;\nlet mensagem = item.systemPrompt;\n\n// Substituir variáveis\nmensagem = mensagem.replace(/\\{\\{nome\\}\\}/gi, item.nome);\nmensagem = mensagem.replace(/\\{\\{telefone\\}\\}/gi, item.telefone);\n\nreturn [{\n  json: {\n    ...item,\n    mensagem_gerada: mensagem.trim()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 500],
+      "id": "mensagem-simples",
+      "name": "Mensagem Simples (Sem IA)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pós-processar mensagem da IA\nconst item = $input.item.json;\nconst aiOutput = $('AI Agent - Gerar Mensagem').item.json.output;\n\nlet mensagem = aiOutput.trim();\nmensagem = mensagem.replace(/^[\"']|[\"']$/g, '');\n\nreturn [{\n  json: {\n    ...item,\n    mensagem_gerada: mensagem\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 300],
+      "id": "pos-processar-ai",
+      "name": "Pós-Processar IA"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.evolutionEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey", "value": "={{ $json.apiKey }}"},
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "number", "value": "={{ $json.telefone }}"},
+            {"name": "mediatype", "value": "image"},
+            {"name": "media", "value": "={{ $json.imageUrl }}"},
+            {"name": "caption", "value": "={{ $json.mensagem_gerada }}"}
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1960, 400],
+      "id": "enviar-whatsapp",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2180, 400],
+      "id": "check-sucesso",
+      "name": "Enviou com Sucesso?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Processar Payload').item.json.backendUrl }}/api/campaigns/={{ $('Processar Payload').item.json.campaignId }}/update-status",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "contactName", "value": "={{ $json.nome }}"},
+            {"name": "phone", "value": "={{ $json.telefone }}"},
+            {"name": "status", "value": "sent"},
+            {"name": "messageText", "value": "={{ $json.mensagem_gerada }}"}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2400, 300],
+      "id": "callback-sucesso",
+      "name": "Callback - Sucesso",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.currentRetry }}",
+              "operation": "smaller",
+              "value2": "={{ $json.maxRetries }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2400, 500],
+      "id": "check-retry",
+      "name": "Tentar Novamente?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Incrementar contador de retry\nconst item = $input.item.json;\nreturn [{\n  json: {\n    ...item,\n    currentRetry: (item.currentRetry || 0) + 1\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2620, 450],
+      "id": "incrementar-retry",
+      "name": "Incrementar Retry"
+    },
+    {
+      "parameters": {
+        "amount": 5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2840, 450],
+      "id": "wait-retry",
+      "name": "Wait - Retry (5s)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Processar Payload').item.json.backendUrl }}/api/campaigns/={{ $('Processar Payload').item.json.campaignId }}/update-status",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "contactName", "value": "={{ $json.nome }}"},
+            {"name": "phone", "value": "={{ $json.telefone }}"},
+            {"name": "status", "value": "error"},
+            {"name": "errorMessage", "value": "={{ $json.error || 'Erro desconhecido' }}"}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2620, 600],
+      "id": "callback-erro",
+      "name": "Callback - Erro",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// Log de sucesso\nconsole.log(`   ✅ [${item.id}/${item.total}] Enviado: ${item.nome}`);\nconsole.log(`   ⏱️  Aguardando ${item.delay_calculado}s...`);\n\nif (item.is_last) {\n  console.log('\\n   🎯 Último contato processado!');\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2840, 300],
+      "id": "log-resultado",
+      "name": "Log Resultado"
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.delay_calculado }}"
+      },
+      "name": "Wait - Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3060, 400],
+      "id": "wait-delay"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_last }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3280, 400],
+      "id": "check-ultimo",
+      "name": "É o Último?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backendUrl }}/api/campaigns/={{ $json.campaignId }}/complete",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "totalSent", "value": "={{ $json.total - $json.error_count || 0 }}"},
+            {"name": "totalErrors", "value": "={{ $json.error_count || 0 }}"}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3500, 300],
+      "id": "callback-finalizar",
+      "name": "Callback - Finalizar Campanha",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Relatório final\nconst item = $input.item.json;\n\nif (item.is_last) {\n  console.log('\\n' + '='.repeat(60));\n  console.log('✅ CAMPANHA FINALIZADA!');\n  console.log('='.repeat(60));\n  console.log(`📊 Campaign ID: ${item.campaignId}`);\n  console.log(`👥 Total: ${item.total}`);\n  console.log(`⏰ Início: ${item.startTime}`);\n  console.log(`⏰ Fim: ${new Date().toISOString()}`);\n  console.log('='.repeat(60) + '\\n');\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3720, 400],
+      "id": "relatorio-final",
+      "name": "Relatório Final"
+    }
+  ],
+  "connections": {
+    "Webhook - Receber Campanha": {
+      "main": [[{"node": "É OPTIONS?", "type": "main", "index": 0}]]
+    },
+    "É OPTIONS?": {
+      "main": [
+        [{"node": "Resposta OPTIONS", "type": "main", "index": 0}],
+        [{"node": "Processar Payload", "type": "main", "index": 0}]
+      ]
+    },
+    "Processar Payload": {
+      "main": [[
+        {"node": "Resposta ao Front-End", "type": "main", "index": 0},
+        {"node": "Process One by One", "type": "main", "index": 0}
+      ]]
+    },
+    "Process One by One": {
+      "main": [
+        [],
+        [{"node": "Usar IA?", "type": "main", "index": 0}]
+      ]
+    },
+    "Usar IA?": {
+      "main": [
+        [{"node": "AI Agent - Gerar Mensagem", "type": "main", "index": 0}],
+        [{"node": "Mensagem Simples (Sem IA)", "type": "main", "index": 0}]
+      ]
+    },
+    "AI Agent - Gerar Mensagem": {
+      "main": [[{"node": "Pós-Processar IA", "type": "main", "index": 0}]]
+    },
+    "Pós-Processar IA": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Mensagem Simples (Sem IA)": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Enviar WhatsApp": {
+      "main": [[{"node": "Enviou com Sucesso?", "type": "main", "index": 0}]]
+    },
+    "Enviou com Sucesso?": {
+      "main": [
+        [{"node": "Callback - Sucesso", "type": "main", "index": 0}],
+        [{"node": "Tentar Novamente?", "type": "main", "index": 0}]
+      ]
+    },
+    "Callback - Sucesso": {
+      "main": [[{"node": "Log Resultado", "type": "main", "index": 0}]]
+    },
+    "Tentar Novamente?": {
+      "main": [
+        [{"node": "Incrementar Retry", "type": "main", "index": 0}],
+        [{"node": "Callback - Erro", "type": "main", "index": 0}]
+      ]
+    },
+    "Incrementar Retry": {
+      "main": [[{"node": "Wait - Retry (5s)", "type": "main", "index": 0}]]
+    },
+    "Wait - Retry (5s)": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Callback - Erro": {
+      "main": [[{"node": "Wait - Delay", "type": "main", "index": 0}]]
+    },
+    "Log Resultado": {
+      "main": [[{"node": "Wait - Delay", "type": "main", "index": 0}]]
+    },
+    "Wait - Delay": {
+      "main": [[{"node": "É o Último?", "type": "main", "index": 0}]]
+    },
+    "É o Último?": {
+      "main": [
+        [{"node": "Callback - Finalizar Campanha", "type": "main", "index": 0}],
+        [{"node": "Relatório Final", "type": "main", "index": 0}]
+      ]
+    },
+    "Callback - Finalizar Campanha": {
+      "main": [[{"node": "Relatório Final", "type": "main", "index": 0}]]
+    },
+    "Relatório Final": {
+      "main": [[{"node": "Process One by One", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {}
+}
