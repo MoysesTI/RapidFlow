@@ -124,6 +124,16 @@ class ApiClient {
         return this.request(`/campaigns/${id}`);
     }
 
+    async executeCampaign(id) {
+        return this.request(`/campaigns/${id}/execute`, {
+            method: 'POST'
+        });
+    }
+
+    async getCampaignLogs(id) {
+        return this.request(`/campaigns/${id}/logs`);
+    }
+
     // Helpers
     getCurrentUser() {
         const userStr = localStorage.getItem('prismatech_user');
