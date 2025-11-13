@@ -2,7 +2,9 @@
 // API CLIENT - COMUNICAÇÃO COM BACKEND
 // =====================================================
 
-const API_URL = 'https://rapidflow-backend.onrender.com/api';
+// Para testes locais, use: http://localhost:5000/api
+// Para produção, use: https://rapidflow-backend.onrender.com/api
+const API_URL = 'http://localhost:5000/api';
 
 class ApiClient {
     constructor() {
