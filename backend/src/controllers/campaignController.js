@@ -131,11 +131,12 @@ exports.executeCampaign = async (req, res) => {
         await axios.post(config.webhookUrl, webhookPayload, {
             headers: { 'Content-Type': 'application/json' },
             timeout: 30000,
-            httpsAgent: httpsAgent  // ← ADICIONAR ISTO
+            httpsAgent: httpsAgent
         });
 
+        // ✅ REMOVIDO updated_at DAQUI
         await pool.query(
-            'UPDATE campaigns SET status = $1, updated_at = NOW() WHERE id = $2',
+            'UPDATE campaigns SET status = $1 WHERE id = $2',
             ['running', id]
         );
 
