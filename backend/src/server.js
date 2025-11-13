@@ -1,9 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
-const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const { pool } = require('./config/database');
@@ -12,7 +10,19 @@ const authRoutes = require('./routes/auth');
 const configRoutes = require('./routes/config');
 const campaignRoutes = require('./routes/campaigns');
 
+// Importar segurança
+const {
+    apiLimiter,
+    helmetConfig,
+    validateJWTSecret,
+    validateEnvVariables
+} = require('./middleware/security');
+
 const app = express();
+
+// Validar ambiente ANTES de iniciar
+validateEnvVariables();
+validateJWTSecret();
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -21,40 +31,45 @@ const PORT = process.env.PORT || 5000;
 // ===== CORS CONFIGURATION =====
 const allowedOrigins = process.env.CORS_ORIGIN 
     ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+    : [];
+
+if (allowedOrigins.length === 0 && process.env.NODE_ENV === 'production') {
+    console.error('⚠️  AVISO: CORS_ORIGIN não configurado em produção!');
+}
 
 const corsOptions = {
     origin: function (origin, callback) {
+        // Permitir requests sem origin (mobile apps, curl, postman)
         if (!origin) return callback(null, true);
         
-        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+        if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
             callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+            console.warn('🚫 CORS bloqueou:', origin);
+            callback(new Error('Origem não permitida pelo CORS'));
         }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86400 // 24 horas
 };
 
 // ===== MIDDLEWARE =====
-app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+app.use(helmetConfig);
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
+
+// Logs apenas em dev
+if (process.env.NODE_ENV !== 'production') {
+    app.use(morgan('dev'));
+}
 
 // Rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100
-});
-app.use('/api/', limiter);
+app.use('/api/', apiLimiter);
 
 // ===== ROUTES =====
 app.get('/health', (req, res) => {
@@ -62,7 +77,7 @@ app.get('/health', (req, res) => {
         status: 'OK', 
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        cors: allowedOrigins
+        env: process.env.NODE_ENV
     });
 });
 
@@ -72,10 +87,15 @@ app.use('/api/campaigns', campaignRoutes);
 
 // ===== ERROR HANDLER =====
 app.use((err, req, res, next) => {
-    console.error('Erro:', err);
+    // Não expor detalhes em produção
+    const isDev = process.env.NODE_ENV !== 'production';
+    
+    console.error('❌ Erro:', err);
+    
     res.status(err.status || 500).json({
         error: true,
-        message: err.message || 'Erro interno do servidor'
+        message: isDev ? err.message : 'Erro interno do servidor',
+        ...(isDev && { stack: err.stack })
     });
 });
 
@@ -90,22 +110,18 @@ app.use((req, res) => {
 // ===== INICIAR SERVIDOR =====
 async function startServer() {
     try {
-        // Testar conexão com banco
         await pool.query('SELECT NOW()');
         console.log('✅ Conectado ao PostgreSQL');
         
-        // Executar migrations automaticamente
         await runMigrations();
-        
         console.log('✅ Banco de dados configurado');
         
         app.listen(PORT, () => {
             console.log('');
             console.log('🚀 ===================================');
-            console.log(`🚀 Servidor rodando na porta ${PORT}`);
+            console.log(`🚀 Servidor: http://localhost:${PORT}`);
             console.log(`🚀 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`🚀 URL: http://localhost:${PORT}`);
-            console.log(`🚀 CORS habilitado para: ${allowedOrigins.join(', ')}`);
+            console.log(`🚀 CORS: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : 'TODOS (dev)'}`);
             console.log('🚀 ===================================');
             console.log('');
         });

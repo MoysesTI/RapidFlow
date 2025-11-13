@@ -1,38 +1,104 @@
-﻿# Node modules
+# ═══════════════════════════════════════════════════════════
+# ARQUIVOS SENSÍVEIS - NUNCA VERSIONAR
+# ═══════════════════════════════════════════════════════════
+.env
+.env.local
+.env.production
+.env.development
+*.env
+
+# Credenciais e chaves
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+secrets.json
+credentials.json
+
+# ═══════════════════════════════════════════════════════════
+# NODE.JS
+# ═══════════════════════════════════════════════════════════
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Environment variables
-.env
-.env.local
-.env.production
+lerna-debug.log*
+.pnpm-debug.log*
 
 # Logs
 logs/
 *.log
+pids/
+*.pid
+*.seed
+*.pid.lock
 
-# OS
+# Diretórios de runtime
+lib-cov/
+coverage/
+.nyc_output/
+.grunt/
+bower_components/
+.lock-wscript/
+build/Release/
+
+# Dependency directories
+jspm_packages/
+
+# ═══════════════════════════════════════════════════════════
+# BANCO DE DADOS
+# ═══════════════════════════════════════════════════════════
+*.sqlite
+*.db
+*.sql
+database.json
+prisma/dev.db
+prisma/migrations/
+
+# ═══════════════════════════════════════════════════════════
+# SISTEMA OPERACIONAL
+# ═══════════════════════════════════════════════════════════
 .DS_Store
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
+Desktop.ini
+$RECYCLE.BIN/
 *.swp
 *.swo
+*~
 
-# Build
+# ═══════════════════════════════════════════════════════════
+# IDEs
+# ═══════════════════════════════════════════════════════════
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.iml
+
+# ═══════════════════════════════════════════════════════════
+# BACKUPS E TEMPORÁRIOS
+# ═══════════════════════════════════════════════════════════
+*.backup
+*.bak
+*.tmp
+*.temp
+*.old
+*_backup
+server_js.backup
+
+# ═══════════════════════════════════════════════════════════
+# UPLOADS DE USUÁRIOS
+# ═══════════════════════════════════════════════════════════
+uploads/
+temp/
+cache/
+
+# ═══════════════════════════════════════════════════════════
+# PRODUCTION
+# ═══════════════════════════════════════════════════════════
 dist/
 build/
-
-# Database
-*.sql.backup
-*.db
-
-# Uploads temporários
-uploads/
-*.csv
-*.xlsx
-*.xls
+out/
