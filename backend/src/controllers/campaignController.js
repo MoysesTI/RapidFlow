@@ -2,10 +2,16 @@ const multer = require('multer');
 const { parseContactsBuffer } = require('../utils/fileParser');
 const { pool } = require('../config/database');
 const axios = require('axios');
+const https = require('https');
 
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+// Criar agente HTTPS que ignora verificação de SSL
+const httpsAgent = new https.Agent({  
+    rejectUnauthorized: false
 });
 
 exports.uploadContacts = [
@@ -40,13 +46,11 @@ exports.createCampaign = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Nenhum contato fornecido' });
         }
 
-        // Buscar configurações do usuário
         const userConfigResult = await pool.query(
             'SELECT * FROM user_configs WHERE user_id = $1',
             [userId]
         );
 
-        // Usar configurações do usuário se existirem, senão usar do body
         const userConfig = userConfigResult.rows[0] || {};
         
         const finalConfig = {
@@ -123,15 +127,19 @@ exports.executeCampaign = async (req, res) => {
 
         console.log('Sending to webhook:', config.webhookUrl);
 
+        // USAR httpsAgent PARA IGNORAR SSL
         await axios.post(config.webhookUrl, webhookPayload, {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 30000
+            timeout: 30000,
+            httpsAgent: httpsAgent  // ← ADICIONAR ISTO
         });
 
         await pool.query(
             'UPDATE campaigns SET status = $1, updated_at = NOW() WHERE id = $2',
             ['running', id]
         );
+
+        console.log('✅ Campaign sent successfully');
 
         res.json({
             success: true,
