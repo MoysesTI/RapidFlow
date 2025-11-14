@@ -9,9 +9,9 @@ async function runMigrations() {
         // Criar tabela de controle de migrations se não existir
         await pool.query(`
             CREATE TABLE IF NOT EXISTS schema_migrations (
-                id SERIAL PRIMARY KEY,
-                migration_name VARCHAR(255) UNIQUE NOT NULL,
-                executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                version INTEGER PRIMARY KEY,
+                name VARCHAR(255),
+                executed_at TIMESTAMP DEFAULT NOW()
             );
         `);
 
@@ -26,11 +26,19 @@ async function runMigrations() {
         // Executar cada migration se ainda não foi executada
         for (const file of migrationFiles) {
             const migrationName = file.replace('.sql', '');
+            // Extrair número da versão do nome do arquivo (ex: "001" de "001_schema.sql")
+            const versionMatch = file.match(/^(\d+)_/);
+            const version = versionMatch ? parseInt(versionMatch[1]) : null;
+
+            if (!version) {
+                console.log(`⚠️  Pulando arquivo sem versão numérica: ${file}`);
+                continue;
+            }
 
             // Verificar se já foi executada
             const checkMigration = await pool.query(
-                'SELECT id FROM schema_migrations WHERE migration_name = $1',
-                [migrationName]
+                'SELECT version FROM schema_migrations WHERE version = $1',
+                [version]
             );
 
             if (checkMigration.rows.length === 0) {
@@ -44,8 +52,8 @@ async function runMigrations() {
 
                 // Registrar como executada
                 await pool.query(
-                    'INSERT INTO schema_migrations (migration_name) VALUES ($1)',
-                    [migrationName]
+                    'INSERT INTO schema_migrations (version, name, executed_at) VALUES ($1, $2, NOW())',
+                    [version, migrationName]
                 );
 
                 console.log(`✅ Migration ${migrationName} executada com sucesso!`);
