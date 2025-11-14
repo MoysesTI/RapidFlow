@@ -1,0 +1,961 @@
+{
+  "name": "RapidFlow Campaign v3.0 - Enhanced",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prisma",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "3216c8ea-20d0-47b0-ba74-498e5b0b2ca6",
+      "name": "Webhook - Receber Campanha",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        112
+      ],
+      "webhookId": "prisma-campaign-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "options-check",
+              "leftValue": "={{ $json.headers['request-method'] || $json.method || 'POST' }}",
+              "rightValue": "OPTIONS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        112
+      ],
+      "id": "b5e97d25-94ca-42d7-b299-6bdd69dd2c90",
+      "name": "É OPTIONS?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\": \"ok\", \"cors\": \"enabled\"}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, GET, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "50ddf98c-1d0a-46d7-ae08-819a2ecd25c7",
+      "name": "Resposta OPTIONS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================\n// PROCESSAMENTO E VALIDAÇÃO ROBUSTA - v3.0\n// =====================================================\n\nconst body = $input.item.json.body || $input.item.json;\n\n// ===== TESTE DE CONEXÃO =====\nif (body.test === true) {\n  return [{\n    json: {\n      success: true,\n      message: '✅ Conexão OK!',\n      version: '3.0',\n      features: ['WebSocket', 'Analytics', 'RateLimit', 'Retry', 'Validation'],\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// ===== EXTRAIR E VALIDAR DADOS =====\nconst contacts = body.contacts || [];\nconst config = body.config || {};\nconst metadata = body.metadata || {};\n\n// Validações críticas\nif (!contacts || contacts.length === 0) {\n  throw new Error('❌ Nenhum contato encontrado no payload');\n}\n\nif (contacts.length > 10000) {\n  throw new Error('❌ Máximo de 10.000 contatos por campanha');\n}\n\nconst apiKey = config.evolutionApiKey || config.apiKey;\nconst endpoint = config.evolutionEndpoint;\nconst backendUrl = config.backendUrl || 'https://rapidflow-backend.onrender.com';\nconst useAI = config.useAI !== false; // Default: true\nconst maxRetries = Math.min(config.maxRetries || 3, 5); // Max 5 retries\nconst delayMin = Math.max(config.delayMin || 140, 100); // Min 100ms\nconst delayMax = Math.min(config.delayMax || 380, 3600); // Max 1h\n\nif (!apiKey) throw new Error('❌ API Key da Evolution não fornecida');\nif (!endpoint) throw new Error('❌ Evolution endpoint não fornecido');\nif (delayMin > delayMax) throw new Error('❌ delayMin não pode ser maior que delayMax');\n\nconsole.log('\\n' + '='.repeat(70));\nconsole.log('🚀 NOVA CAMPANHA INICIADA - ENHANCED v3.0');\nconsole.log('='.repeat(70));\nconsole.log(`📊 Campaign ID: ${metadata.campaignId}`);\nconsole.log(`👥 Total de Contatos: ${contacts.length}`);\nconsole.log(`🤖 IA Ativada: ${useAI ? 'SIM ✅' : 'NÃO ❌'}`);\nconsole.log(`🔄 Max Retries: ${maxRetries}`);\nconsole.log(`⏱️  Delay Range: ${delayMin}ms - ${delayMax}ms`);\nconsole.log(`🔙 Backend URL: ${backendUrl}`);\nconsole.log(`📡 Evolution: ${endpoint}`);\nconsole.log('='.repeat(70) + '\\n');\n\n// ===== PROCESSAR CONTATOS COM VALIDAÇÃO =====\nconst validContacts = [];\nconst invalidContacts = [];\n\ncontacts.forEach((contact, index) => {\n  // Validar nome\n  if (!contact.nome || typeof contact.nome !== 'string' || contact.nome.trim().length === 0) {\n    invalidContacts.push({ index, reason: 'Nome inválido', contact });\n    return;\n  }\n\n  // Validar telefone\n  if (!contact.telefone || typeof contact.telefone !== 'string') {\n    invalidContacts.push({ index, reason: 'Telefone inválido', contact });\n    return;\n  }\n\n  // Normalizar telefone\n  let telefone = String(contact.telefone).replace(/[^0-9]+/g, '');\n  \n  // Validar tamanho\n  if (telefone.length < 10 || telefone.length > 15) {\n    invalidContacts.push({ index, reason: 'Telefone com tamanho inválido', contact });\n    return;\n  }\n\n  // Adicionar código do país se necessário\n  if (telefone.length <= 11) {\n    telefone = '55' + telefone;\n  }\n\n  // Calcular delay com variação\n  const delay = Math.floor(Math.random() * (delayMax - delayMin + 1)) + delayMin;\n\n  validContacts.push({\n    id: validContacts.length + 1,\n    nome: contact.nome.trim(),\n    telefone: telefone,\n    \n    // Config Evolution\n    evolutionEndpoint: endpoint,\n    apiKey: apiKey,\n    imageUrl: config.imageUrl || '',\n    \n    // Config OpenAI\n    openaiKey: config.openaiApiKey || '',\n    openaiModel: config.openaiModel || 'gpt-4o-mini',\n    systemPrompt: config.systemPrompt || 'Olá!',\n    useAI: useAI,\n    \n    // Controle de envio\n    delay_calculado: delay,\n    maxRetries: maxRetries,\n    currentRetry: 0,\n    total: contacts.length,\n    validTotal: 0, // Será preenchido depois\n    is_first: false,\n    is_last: false,\n    \n    // Metadata\n    campaignId: metadata.campaignId,\n    backendUrl: backendUrl,\n    startTime: metadata.startTime || new Date().toISOString(),\n    \n    // Controle de circuito\n    consecutiveErrors: 0,\n    circuitBreakerOpen: false\n  });\n});\n\n// Atualizar contadores\nconst validTotal = validContacts.length;\nvalidContacts.forEach((contact, index) => {\n  contact.validTotal = validTotal;\n  contact.is_first = index === 0;\n  contact.is_last = index === validTotal - 1;\n});\n\n// Log de contatos inválidos\nif (invalidContacts.length > 0) {\n  console.log(`\\n⚠️  ATENÇÃO: ${invalidContacts.length} contatos inválidos foram removidos:`);\n  invalidContacts.slice(0, 5).forEach(item => {\n    console.log(`  - Índice ${item.index}: ${item.reason}`);\n  });\n  if (invalidContacts.length > 5) {\n    console.log(`  ... e mais ${invalidContacts.length - 5} contatos`);\n  }\n  console.log('');\n}\n\nconsole.log(`✅ Contatos válidos: ${validTotal}/${contacts.length}`);\nconsole.log(`📋 Tempo estimado: ~${Math.round((validTotal * ((delayMin + delayMax) / 2)) / 60000)} minutos\\n`);\n\nif (validContacts.length === 0) {\n  throw new Error('❌ Nenhum contato válido para processar');\n}\n\nreturn validContacts.map(contact => ({ json: contact }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ],
+      "id": "c8d0cfb5-6fde-498e-8d63-a7ecb83d1c60",
+      "name": "Processar & Validar Payload"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"✅ Campanha recebida e em processamento\",\n  \"campaignId\": \"{{ $json.campaignId }}\",\n  \"totalContacts\": {{ $json.total }},\n  \"validContacts\": {{ $json.validTotal }},\n  \"useAI\": {{ $json.useAI }},\n  \"estimatedTime\": \"{{ Math.round(($json.validTotal * $json.delay_calculado) / 60000) }} minutos\",\n  \"version\": \"3.0\",\n  \"features\": [\"Analytics\", \"WebSocket\", \"Retry\", \"Validation\"]\n}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        256,
+        112
+      ],
+      "id": "b734bdd2-fb94-4b7d-b1e6-0c0d5e49eb7b",
+      "name": "Resposta ao Front-End"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Processar Um a Um",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        512,
+        208
+      ],
+      "id": "86625813-1194-4aef-a3ce-3a4c9e4d2ed5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Circuit Breaker Check\nconst item = $input.item.json;\n\nif (item.circuitBreakerOpen) {\n  console.log(`⛔ Circuit breaker ABERTO para campanha ${item.campaignId}`);\n  return [{\n    json: {\n      ...item,\n      skipMessage: true,\n      error: 'Circuit breaker ativo - muitos erros consecutivos'\n    }\n  }];\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        208
+      ],
+      "id": "4845df2c-dd72-4450-980e-75ad2d8647cf",
+      "name": "Circuit Breaker Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skipMessage }}",
+              "value2": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        96
+      ],
+      "id": "871f76db-4d0f-48ed-9a81-e67c3484c29b",
+      "name": "Pode Enviar?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.useAI }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        192
+      ],
+      "id": "ba233a64-60ae-421c-bc24-5bcb8432f2bb",
+      "name": "Usar IA?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.systemPrompt }}",
+        "options": {
+          "systemMessage": "Você é um Especialista em Comunicação da **RapidFlow v3.0**\\n\\n🎯 **MISSÃO:**\\nReescrever a mensagem fornecida de forma única e natural para o destinatário {{ $json.nome }}, mantendo EXATAMENTE o mesmo sentido e objetivo.\\n\\n✅ **REGRAS:**\\n1. SEMPRE comece com saudação personalizada: \\\"Oi {{ $json.nome }}!\\\" ou similar\\n2. Varie estrutura, vocabulário e tom\\n3. Preserve informações essenciais (links, valores, datas)\\n4. Máximo 300 caracteres\\n5. Retorne APENAS a mensagem, sem aspas ou explicações\\n\\n❌ **NUNCA:**\\n- Soar robótico\\n- Adicionar informações não presentes\\n- Usar sempre as mesmas palavras\\n- Retornar mensagem técnica ou erro"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1632,
+        -128
+      ],
+      "id": "ec241959-0531-410b-bf68-5a6bc063ac27",
+      "name": "AI Agent - Gerar Mensagem"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mensagem simples sem IA\nconst item = $input.item.json;\nlet mensagem = item.systemPrompt;\n\n// Substituir variáveis\nmensagem = mensagem.replace(/\\{\\{nome\\}\\}/gi, item.nome);\nmensagem = mensagem.replace(/\\{\\{telefone\\}\\}/gi, item.telefone);\n\nreturn [{\n  json: {\n    ...item,\n    mensagem_gerada: mensagem.trim(),\n    ai_used: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        512
+      ],
+      "id": "ff4b082b-c34c-469b-a8b4-16da7e9ccfe5",
+      "name": "Mensagem Simples"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pós-processar IA\nconst item = $input.item.json;\nconst aiOutput = $('AI Agent - Gerar Mensagem').item.json.output;\n\nlet mensagem = aiOutput.trim();\nmensagem = mensagem.replace(/^[\\\"']|[\\\"']$/g, '');\n\nreturn [{\n  json: {\n    ...item,\n    mensagem_gerada: mensagem,\n    ai_used: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        208
+      ],
+      "id": "3890455b-0aad-4a19-b8c4-e07fd330066a",
+      "name": "Pós-Processar IA"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.evolutionEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefone }}"
+            },
+            {
+              "name": "mediatype",
+              "value": "image"
+            },
+            {
+              "name": "media",
+              "value": "={{ $json.imageUrl }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.mensagem_gerada }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1984,
+        256
+      ],
+      "id": "1ad5949c-49c5-4076-bc73-437daf34ec01",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isEmpty"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        272
+      ],
+      "id": "702a4aa5-4afd-4d5c-a7dc-697722a8e486",
+      "name": "Enviou com Sucesso?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Processar & Validar Payload').item.json.backendUrl }}/api/campaigns/={{ $('Processar & Validar Payload').item.json.campaignId }}/update-status",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contactName",
+              "value": "={{ $json.nome }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $json.telefone }}"
+            },
+            {
+              "name": "status",
+              "value": "sent"
+            },
+            {
+              "name": "messageText",
+              "value": "={{ $json.mensagem_gerada }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2464,
+        32
+      ],
+      "id": "9508b123-d5d7-4adb-9cc2-918657a04564",
+      "name": "Callback - Sucesso",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Notificar progresso a cada 5 mensagens\nconst item = $input.item.json;\n\nif (item.id % 5 === 0 || item.is_last) {\n  const progressData = {\n    currentPosition: item.id,\n    sent: item.id,\n    errors: 0\n  };\n\n  return [{\n    json: {\n      ...item,\n      progressData,\n      shouldNotifyProgress: true\n    }\n  }];\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2752,
+        64
+      ],
+      "id": "aaa4c664-413e-411e-85ef-8151f1d5fd7a",
+      "name": "Calcular Progresso"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.shouldNotifyProgress }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        48
+      ],
+      "id": "21f91958-5f74-435a-9353-2b7268e02e2c",
+      "name": "Notificar Progresso?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backendUrl }}/api/campaigns/={{ $json.campaignId }}/progress",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "currentPosition",
+              "value": "={{ $json.progressData.currentPosition }}"
+            },
+            {
+              "name": "sent",
+              "value": "={{ $json.progressData.sent }}"
+            },
+            {
+              "name": "errors",
+              "value": "={{ $json.progressData.errors }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3312,
+        -64
+      ],
+      "id": "402af79d-74b3-4d8b-92bd-efea432d77a4",
+      "name": "Notificar Progresso",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.currentRetry }}",
+              "operation": "smaller",
+              "value2": "={{ $json.maxRetries }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        400
+      ],
+      "id": "070bb55a-3392-4056-8593-b942bbfc6789",
+      "name": "Pode Retentar?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retry com exponential backoff\nconst item = $input.item.json;\nconst retryNumber = (item.currentRetry || 0) + 1;\nconst baseDelay = 2000; // 2s\nconst retryDelay = baseDelay * Math.pow(2, retryNumber - 1); // Exponential backoff\n\nconsole.log(`🔄 Retry ${retryNumber}/${item.maxRetries} para ${item.nome} (aguardar ${retryDelay}ms)`);\n\nreturn [{\n  json: {\n    ...item,\n    currentRetry: retryNumber,\n    retryDelay: retryDelay\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2752,
+        512
+      ],
+      "id": "34995de3-b9fb-44fa-a8c3-1a49254ecce0",
+      "name": "Incrementar Retry"
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.retryDelay / 1000 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3008,
+        512
+      ],
+      "id": "0a4e3dd0-478b-48ad-8570-fb35c1c4385a",
+      "name": "Wait - Retry",
+      "webhookId": "retry-wait"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backendUrl }}/api/campaigns/={{ $json.campaignId }}/update-status",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contactName",
+              "value": "={{ $json.nome }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $json.telefone }}"
+            },
+            {
+              "name": "status",
+              "value": "error"
+            },
+            {
+              "name": "errorMessage",
+              "value": "={{ $json.error || 'Erro desconhecido após todos os retries' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2752,
+        352
+      ],
+      "id": "6b04cd8e-ed71-43a7-a922-2a3920412932",
+      "name": "Callback - Erro Final",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst sent = !item.error;\n\nif (sent) {\n  console.log(`   ✅ [${item.id}/${item.validTotal}] ${item.nome} - ENVIADO`);\n} else {\n  console.log(`   ❌ [${item.id}/${item.validTotal}] ${item.nome} - ERRO: ${item.error}`);\n}\n\nif (item.is_last) {\n  console.log('\\n🎯 ÚLTIMO CONTATO PROCESSADO!\\n');\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        112
+      ],
+      "id": "16830e47-ad60-433d-b174-89eedd46f2c1",
+      "name": "Log Resultado"
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.delay_calculado / 1000 }}"
+      },
+      "name": "Wait - Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3152,
+        224
+      ],
+      "id": "b4ff386e-2553-4637-8bf0-e14c9a96f612",
+      "webhookId": "delay-wait"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_last }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        304
+      ],
+      "id": "4e84edf2-22e7-4c32-9db1-36b25809cb74",
+      "name": "É o Último?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backendUrl }}/api/campaigns/={{ $json.campaignId }}/complete",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "totalSent",
+              "value": "={{ $json.validTotal }}"
+            },
+            {
+              "name": "totalErrors",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4352,
+        160
+      ],
+      "id": "389f65a0-1d57-40ac-8fe1-433aa1a98f35",
+      "name": "Finalizar Campanha",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nif (item.is_last) {\n  console.log('\\n' + '='.repeat(70));\n  console.log('✅ CAMPANHA CONCLUÍDA COM SUCESSO!');\n  console.log('='.repeat(70));\n  console.log(`📊 Campaign ID: ${item.campaignId}`);\n  console.log(`👥 Total Processado: ${item.validTotal}`);\n  console.log(`⏰ Início: ${item.startTime}`);\n  console.log(`⏰ Fim: ${new Date().toISOString()}`);\n  console.log('='.repeat(70) + '\\n');\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4304,
+        608
+      ],
+      "id": "f7d06eff-30dd-4674-95ae-1fc47e7ac424",
+      "name": "Relatório Final"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1504,
+        0
+      ],
+      "id": "2a3781d4-6b07-4208-9433-75480a6ad5b1",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIALS_ID",
+          "name": "OpenAi account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - Receber Campanha": {
+      "main": [
+        [
+          {
+            "node": "É OPTIONS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É OPTIONS?": {
+      "main": [
+        [
+          {
+            "node": "Resposta OPTIONS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Processar & Validar Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar & Validar Payload": {
+      "main": [
+        [
+          {
+            "node": "Resposta ao Front-End",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Processar Um a Um",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Um a Um": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Circuit Breaker Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Circuit Breaker Check": {
+      "main": [
+        [
+          {
+            "node": "Pode Enviar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pode Enviar?": {
+      "main": [
+        [
+          {
+            "node": "Usar IA?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait - Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usar IA?": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Gerar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mensagem Simples",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Gerar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Pós-Processar IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensagem Simples": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pós-Processar IA": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Enviou com Sucesso?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviou com Sucesso?": {
+      "main": [
+        [
+          {
+            "node": "Callback - Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pode Retentar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback - Sucesso": {
+      "main": [
+        [
+          {
+            "node": "Calcular Progresso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Progresso": {
+      "main": [
+        [
+          {
+            "node": "Notificar Progresso?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Progresso?": {
+      "main": [
+        [
+          {
+            "node": "Notificar Progresso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Progresso": {
+      "main": [
+        [
+          {
+            "node": "Log Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pode Retentar?": {
+      "main": [
+        [
+          {
+            "node": "Incrementar Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Callback - Erro Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incrementar Retry": {
+      "main": [
+        [
+          {
+            "node": "Wait - Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Retry": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback - Erro Final": {
+      "main": [
+        [
+          {
+            "node": "Wait - Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Resultado": {
+      "main": [
+        [
+          {
+            "node": "Wait - Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Delay": {
+      "main": [
+        [
+          {
+            "node": "É o Último?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É o Último?": {
+      "main": [
+        [
+          {
+            "node": "Finalizar Campanha",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Relatório Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalizar Campanha": {
+      "main": [
+        [
+          {
+            "node": "Relatório Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relatório Final": {
+      "main": [
+        [
+          {
+            "node": "Processar Um a Um",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Gerar Mensagem",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "rapidflow_v3_enhanced_system"
+  },
+  "tags": ["rapidflow", "v3.0", "whatsapp", "campaign", "ai", "enhanced"]
+}
