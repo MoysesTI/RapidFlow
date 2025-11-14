@@ -27,8 +27,3 @@ SET webhook_url_a = (
     LIMIT 1
 )
 WHERE webhook_url_a IS NULL;
-
--- Registrar migration
-INSERT INTO schema_migrations (version, name, executed_at)
-VALUES (5, '005_custom_campaigns', NOW())
-ON CONFLICT (version) DO NOTHING;
