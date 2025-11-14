@@ -2,7 +2,9 @@
 // API CLIENT - COMUNICAÇÃO COM BACKEND
 // =====================================================
 
-const API_URL = 'https://rapidflow-backend.onrender.com/api';
+// Para testes locais, use: http://localhost:5000/api
+// Para produção, use: https://rapidflow-backend.onrender.com/api
+const API_URL = 'http://localhost:5000/api';
 
 class ApiClient {
     constructor() {
@@ -122,6 +124,29 @@ class ApiClient {
 
     async getCampaignDetails(id) {
         return this.request(`/campaigns/${id}`);
+    }
+
+    async executeCampaign(id) {
+        return this.request(`/campaigns/${id}/execute`, {
+            method: 'POST'
+        });
+    }
+
+    async getCampaignLogs(id) {
+        return this.request(`/campaigns/${id}/logs`);
+    }
+
+    async updateCampaign(id, campaignData) {
+        return this.request(`/campaigns/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(campaignData)
+        });
+    }
+
+    async deleteCampaign(id) {
+        return this.request(`/campaigns/${id}`, {
+            method: 'DELETE'
+        });
     }
 
     // Helpers

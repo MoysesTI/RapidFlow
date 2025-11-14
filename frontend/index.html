@@ -12,13 +12,18 @@
         <div class="logo">
             <h1>RapidFlow</h1>
         </div>
-        <div class="user-menu">
-            <div class="user-info">
-                <span id="userName">Carregando...</span>
-                <small id="userRole">...</small>
+        <nav style="display: flex; align-items: center; gap: 20px;">
+            <a href="campaigns.html" style="color: white; text-decoration: none; font-weight: 500;">
+                📢 Minhas Campanhas
+            </a>
+            <div class="user-menu">
+                <div class="user-info">
+                    <span id="userName">Carregando...</span>
+                    <small id="userRole">...</small>
+                </div>
+                <button class="btn-logout" id="logoutBtn">Sair</button>
             </div>
-            <button class="btn-logout" id="logoutBtn">Sair</button>
-        </div>
+        </nav>
     </header>
 
     <div class="container">
@@ -41,6 +46,10 @@
                     <div class="status-item">
                         <span class="label">Erros</span>
                         <span id="errorCount" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Taxa de Sucesso</span>
+                        <span id="successRate" class="value">--</span>
                     </div>
                 </div>
                 <div class="progress-container">
@@ -79,6 +88,23 @@
                         <label>🤖 OpenAI API Key (Opcional)</label>
                         <input type="password" id="openaiKey" placeholder="sk-...">
                         <small>Para personalização de mensagens com IA</small>
+                    </div>
+
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="useAI" checked>
+                            <span>🧠 Usar IA para personalizar mensagens</span>
+                        </label>
+                        <small class="info-text">
+                            ✅ <strong>Ativado:</strong> Gera mensagens únicas para cada contato (recomendado, evita spam)<br>
+                            ❌ <strong>Desativado:</strong> Envia mensagem padrão (mais rápido, sem custo de IA)
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>🔄 Tentativas em Caso de Erro</label>
+                        <input type="number" id="maxRetries" value="3" min="1" max="10">
+                        <small>Quantidade de tentativas automáticas se falhar (padrão: 3)</small>
                     </div>
 
                     <div class="form-group">
@@ -140,6 +166,18 @@
                     <button class="btn-clear" onclick="clearLogs()">Limpar</button>
                 </div>
                 <div id="activityLog" class="log-container"></div>
+            </div>
+
+            <div class="card messages-card" id="messagesCard" style="display: none;">
+                <div class="card-header">
+                    <h3>📨 Mensagens Enviadas (<span id="messagesCount">0</span>)</h3>
+                    <div class="filter-buttons">
+                        <button class="btn-filter active" onclick="filterMessages('all')">Todas</button>
+                        <button class="btn-filter" onclick="filterMessages('sent')">✅ Enviadas</button>
+                        <button class="btn-filter" onclick="filterMessages('error')">❌ Erros</button>
+                    </div>
+                </div>
+                <div id="messagesList" class="messages-list"></div>
             </div>
         </div>
     </div>

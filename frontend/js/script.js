@@ -41,6 +41,8 @@ async function loadConfig() {
             document.getElementById('delayMax').value = c.delay_max || 380;
             document.getElementById('openaiModel').value = c.openai_model || 'gpt-4';
             document.getElementById('systemPrompt').value = c.system_prompt || '';
+            document.getElementById('useAI').checked = c.use_ai !== false; // Default: true
+            document.getElementById('maxRetries').value = c.max_retries || 3;
             
             console.log('✅ Configurações carregadas para TODOS os usuários');
             addLog('✅ Configurações carregadas', 'success');
@@ -149,7 +151,9 @@ document.getElementById('campaignForm').addEventListener('submit', async (e) => 
             delayMin: parseInt(document.getElementById('delayMin').value),
             delayMax: parseInt(document.getElementById('delayMax').value),
             openaiModel: document.getElementById('openaiModel').value,
-            systemPrompt: document.getElementById('systemPrompt').value
+            systemPrompt: document.getElementById('systemPrompt').value,
+            useAI: document.getElementById('useAI').checked,
+            maxRetries: parseInt(document.getElementById('maxRetries').value)
         };
         
         console.log('📤 Enviando config:', config);
@@ -176,12 +180,15 @@ document.getElementById('campaignForm').addEventListener('submit', async (e) => 
                 document.getElementById('campaignStatus').parentElement.className = 'status-item status-running';
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'inline-flex';
-                
+
                 addLog('✅ Campanha iniciada!', 'success');
-                
+
                 const avgDelay = (config.delayMin + config.delayMax) / 2;
                 const estimatedMinutes = Math.ceil((contacts.length * avgDelay) / 60);
                 document.getElementById('timeEstimate').textContent = `~${estimatedMinutes} min`;
+
+                // Iniciar polling de progresso
+                startProgressPolling();
             }
         }
     } catch (error) {
@@ -196,6 +203,7 @@ function stopCampaign() {
         document.getElementById('campaignStatus').parentElement.className = 'status-item status-stopped';
         document.getElementById('startBtn').style.display = 'inline-flex';
         document.getElementById('stopBtn').style.display = 'none';
+        stopProgressPolling();
         addLog('⏸️ Campanha parada', 'warning');
     }
 }
@@ -223,8 +231,173 @@ function clearLogs() {
     addLog('🗑️ Logs limpos', 'info');
 }
 
+// =====================================================
+// NOVAS FUNCIONALIDADES - LOGS E POLLING
+// =====================================================
+
+let pollingInterval = null;
+let messageFilter = 'all';
+
+// Iniciar polling de progresso
+function startProgressPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+
+    pollingInterval = setInterval(async () => {
+        if (!currentCampaignId || !campaignRunning) {
+            stopProgressPolling();
+            return;
+        }
+
+        try {
+            const details = await api.getCampaignDetails(currentCampaignId);
+            if (details.success && details.campaign) {
+                updateDashboard(details.campaign);
+            }
+        } catch (error) {
+            console.error('Erro ao buscar progresso:', error);
+        }
+    }, 5000); // A cada 5 segundos
+
+    addLog('🔄 Monitoramento em tempo real ativado', 'info');
+}
+
+// Parar polling
+function stopProgressPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        addLog('⏸️ Monitoramento pausado', 'info');
+    }
+}
+
+// Atualizar dashboard com dados da campanha
+function updateDashboard(campaign) {
+    // Atualizar contadores
+    document.getElementById('sentCount').textContent = campaign.sent_count || 0;
+    document.getElementById('errorCount').textContent = campaign.error_count || 0;
+    document.getElementById('totalCount').textContent = campaign.total_contacts || 0;
+
+    // Calcular e atualizar progresso
+    const total = campaign.total_contacts || 0;
+    const sent = campaign.sent_count || 0;
+    const percentage = total > 0 ? Math.round((sent / total) * 100) : 0;
+
+    const progressFill = document.getElementById('progressFill');
+    progressFill.style.width = percentage + '%';
+    progressFill.textContent = percentage + '%';
+
+    // Atualizar taxa de sucesso
+    if (campaign.success_rate !== null && campaign.success_rate !== undefined) {
+        document.getElementById('successRate').textContent = campaign.success_rate.toFixed(1) + '%';
+    } else if (sent > 0) {
+        const errors = campaign.error_count || 0;
+        const successRate = ((sent - errors) / sent) * 100;
+        document.getElementById('successRate').textContent = successRate.toFixed(1) + '%';
+    }
+
+    // Atualizar status
+    if (campaign.status === 'completed') {
+        document.getElementById('campaignStatus').textContent = 'Concluída';
+        document.getElementById('campaignStatus').parentElement.className = 'status-item status-completed';
+        campaignRunning = false;
+        stopProgressPolling();
+        addLog('✅ Campanha finalizada com sucesso!', 'success');
+
+        // Carregar logs finais
+        loadCampaignLogs();
+    } else if (campaign.status === 'running') {
+        document.getElementById('campaignStatus').textContent = 'Em Execução';
+        document.getElementById('campaignStatus').parentElement.className = 'status-item status-running';
+    }
+}
+
+// Carregar logs de mensagens
+async function loadCampaignLogs() {
+    if (!currentCampaignId) return;
+
+    try {
+        const response = await api.getCampaignLogs(currentCampaignId);
+
+        if (response.success && response.logs) {
+            displayMessages(response.logs);
+            addLog(`📊 ${response.logs.length} mensagens carregadas`, 'info');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar logs:', error);
+        addLog('⚠️ Erro ao carregar logs de mensagens', 'warning');
+    }
+}
+
+// Exibir mensagens
+function displayMessages(messages) {
+    if (messages.length === 0) return;
+
+    // Mostrar card de mensagens
+    document.getElementById('messagesCard').style.display = 'block';
+    document.getElementById('messagesCount').textContent = messages.length;
+
+    const container = document.getElementById('messagesList');
+    container.innerHTML = '';
+
+    messages.forEach(msg => {
+        if (messageFilter !== 'all' && msg.status !== messageFilter) return;
+
+        const item = document.createElement('div');
+        item.className = 'message-item';
+        item.dataset.status = msg.status;
+
+        const statusBadge = msg.status === 'sent'
+            ? '<span class="message-badge sent">✅ Enviada</span>'
+            : '<span class="message-badge error">❌ Erro</span>';
+
+        const sentTime = msg.sent_at
+            ? new Date(msg.sent_at).toLocaleString('pt-BR')
+            : new Date(msg.created_at).toLocaleString('pt-BR');
+
+        const messageContent = msg.status === 'sent'
+            ? `<div class="message-text">${msg.message_text}</div>`
+            : `<div class="message-error">❌ ${msg.error_message || 'Erro desconhecido'}</div>`;
+
+        item.innerHTML = `
+            <div class="message-info">
+                <div class="message-contact">${msg.contact_name}</div>
+                <div class="message-phone">📱 ${msg.phone}</div>
+                ${messageContent}
+            </div>
+            <div class="message-status">
+                ${statusBadge}
+                <div class="message-time">⏰ ${sentTime}</div>
+            </div>
+        `;
+
+        container.appendChild(item);
+    });
+}
+
+// Filtrar mensagens
+function filterMessages(filter) {
+    messageFilter = filter;
+
+    // Atualizar botões ativos
+    document.querySelectorAll('.btn-filter').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+
+    // Filtrar itens visíveis
+    const items = document.querySelectorAll('.message-item');
+    items.forEach(item => {
+        if (filter === 'all' || item.dataset.status === filter) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
 document.getElementById('logoutBtn').addEventListener('click', () => {
     if (confirm('Deseja sair?')) {
+        stopProgressPolling();
         api.logout();
     }
 });

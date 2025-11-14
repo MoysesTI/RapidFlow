@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -7,7 +8,12 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+
+// Importar serviços
+const websocketService = require('./services/websocket');
+const logger = require('./services/logger');
 
 // ═══════════════════════════════════════════════════════════
 // 1. CONFIGURAÇÃO BÁSICA
@@ -106,13 +112,15 @@ app.use('/api/', limiter);
 // 5. HEALTH CHECK (ANTES DE CARREGAR ROTAS)
 // ═══════════════════════════════════════════════════════════
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
+    const wsStats = websocketService.getStats();
+    res.json({
+        status: 'OK',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         env: process.env.NODE_ENV || 'development',
         cors: allowedOrigins,
-        version: '2.3.0'
+        version: '3.0.0',
+        websocket: wsStats
     });
 });
 
@@ -169,27 +177,46 @@ async function startServer() {
         // Importar database apenas quando necessário
         const { pool } = require('./config/database');
         const { runMigrations } = require('./auto-migration');
-        
+
         console.log('🔌 Conectando ao banco...');
         await pool.query('SELECT NOW()');
         console.log('✅ PostgreSQL conectado');
-        
+
         console.log('🔧 Executando migrations...');
         await runMigrations();
         console.log('✅ Banco configurado');
-        
-        app.listen(PORT, '0.0.0.0', () => {
+
+        // Inicializar WebSocket
+        websocketService.initialize(server);
+        console.log('✅ WebSocket Service inicializado');
+
+        // Setup error handlers do logger
+        logger.setupErrorHandlers();
+        console.log('✅ Logger configurado');
+
+        server.listen(PORT, '0.0.0.0', () => {
             console.log('\n╔════════════════════════════════════════╗');
             console.log('║   ✅ SERVIDOR RODANDO COM SUCESSO!   ║');
             console.log('╚════════════════════════════════════════╝');
-            console.log(`🌐 URL: http://0.0.0.0:${PORT}`);
+            console.log(`🌐 HTTP: http://0.0.0.0:${PORT}`);
+            console.log(`🔌 WebSocket: ws://0.0.0.0:${PORT}/ws`);
             console.log(`📊 Ambiente: ${process.env.NODE_ENV || 'development'}`);
             console.log(`🔒 CORS: ${allowedOrigins.join(', ')}`);
             console.log(`🔑 JWT: ${process.env.JWT_SECRET.substring(0, 10)}...`);
             console.log('');
+
+            logger.info('Servidor iniciado com sucesso', {
+                port: PORT,
+                environment: process.env.NODE_ENV || 'development',
+                corsOrigins: allowedOrigins.length
+            });
         });
-        
+
     } catch (error) {
+        logger.error('ERRO CRÍTICO ao iniciar servidor', {
+            error: error.message,
+            stack: error.stack
+        });
         console.error('\n❌ ERRO CRÍTICO ao iniciar:');
         console.error(error);
         console.error('\nStack:', error.stack);
