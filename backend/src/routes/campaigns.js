@@ -21,6 +21,8 @@ router.get('/:id/metrics', authenticateToken, campaignController.getCampaignMetr
 router.get('/:id/performance', authenticateToken, campaignController.getCampaignPerformance);
 router.get('/:id/export', authenticateToken, campaignController.exportCampaignReport);
 router.post('/:id/execute', authenticateToken, campaignController.executeCampaign);
+router.put('/:id', authenticateToken, campaignController.updateCampaign);
+router.delete('/:id', authenticateToken, campaignController.deleteCampaign);
 
 // =====================================================
 // ROTAS DE CALLBACK (chamadas pelo n8n)

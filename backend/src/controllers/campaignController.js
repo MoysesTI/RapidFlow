@@ -47,7 +47,7 @@ exports.createCampaign = async (req, res) => {
     const startTime = Date.now();
 
     try {
-        const { name, contacts, config } = req.body;
+        const { name, description, contacts, config, webhook_url_a, webhook_url_b, custom_message } = req.body;
         const userId = req.user.userId;
 
         // Rate limiting
@@ -65,15 +65,22 @@ exports.createCampaign = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Nenhum contato fornecido' });
         }
 
+        // Validar que ao menos um webhook foi fornecido
+        if (!webhook_url_a && !webhook_url_b) {
+            return res.status(400).json({
+                success: false,
+                message: 'Pelo menos um webhook (A ou B) deve ser configurado'
+            });
+        }
+
         const userConfigResult = await pool.query(
             'SELECT * FROM user_configs WHERE user_id = $1',
             [userId]
         );
 
         const userConfig = userConfigResult.rows[0] || {};
-        
+
         const finalConfig = {
-            webhookUrl: userConfig.webhook_url || config.webhookUrl || '',
             evolutionEndpoint: userConfig.evolution_endpoint || config.evolutionEndpoint || '',
             evolutionApiKey: userConfig.evolution_api_key || config.apiKey || '',
             openaiApiKey: userConfig.openai_api_key || config.openaiKey || '',
@@ -81,7 +88,7 @@ exports.createCampaign = async (req, res) => {
             delayMin: config.delayMin || 140,
             delayMax: config.delayMax || 380,
             openaiModel: config.openaiModel || 'gpt-4',
-            systemPrompt: config.systemPrompt || 'Olá, tudo bem?'
+            systemPrompt: custom_message || config.systemPrompt || 'Olá, tudo bem?'
         };
 
         console.log('Final config:', JSON.stringify(finalConfig));
@@ -89,10 +96,12 @@ exports.createCampaign = async (req, res) => {
         const campaignId = `CAMP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         const result = await pool.query(
-            `INSERT INTO campaigns (user_id, campaign_id, name, contacts, config, status, total_contacts, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-             RETURNING id, campaign_id, name, status, created_at`,
-            [userId, campaignId, name, JSON.stringify(contacts), JSON.stringify(finalConfig), 'pending', contacts.length]
+            `INSERT INTO campaigns (user_id, campaign_id, name, description, contacts, config, status, total_contacts,
+                webhook_url_a, webhook_url_b, custom_message, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+             RETURNING id, campaign_id, name, description, status, webhook_url_a, webhook_url_b, custom_message, created_at`,
+            [userId, campaignId, name, description || '', JSON.stringify(contacts), JSON.stringify(finalConfig),
+             'pending', contacts.length, webhook_url_a, webhook_url_b, custom_message]
         );
 
         const campaign = result.rows[0];
@@ -155,6 +164,9 @@ exports.executeCampaign = async (req, res) => {
 
         const userSettings = userConfigResult.rows[0] || { use_ai: true, max_retries: 3 };
 
+        // Usar mensagem personalizada da campanha ou do config
+        const systemPrompt = campaign.custom_message || config.systemPrompt || 'Olá, tudo bem?';
+
         const webhookPayload = {
             contacts: contacts,
             config: {
@@ -165,7 +177,7 @@ exports.executeCampaign = async (req, res) => {
                 delayMin: config.delayMin || 140,
                 delayMax: config.delayMax || 380,
                 openaiModel: config.openaiModel || 'gpt-4',
-                systemPrompt: config.systemPrompt || 'Olá, tudo bem?',
+                systemPrompt: systemPrompt,
                 useAI: userSettings.use_ai !== undefined ? userSettings.use_ai : true,
                 maxRetries: userSettings.max_retries || 3,
                 backendUrl: process.env.BACKEND_URL || 'https://rapidflow-backend.onrender.com'
@@ -177,14 +189,57 @@ exports.executeCampaign = async (req, res) => {
             }
         };
 
-        console.log('Sending to webhook:', config.webhookUrl);
+        // Determinar qual webhook usar (priorizar webhook_url_a)
+        let webhookUrl = campaign.webhook_url_a || campaign.webhook_url_b;
+        let webhookUsed = campaign.webhook_url_a ? 'A' : 'B';
 
-        // USAR httpsAgent PARA IGNORAR SSL
-        await axios.post(config.webhookUrl, webhookPayload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 30000,
-            httpsAgent: httpsAgent
-        });
+        if (!webhookUrl) {
+            return res.status(400).json({
+                success: false,
+                message: 'Nenhum webhook configurado para esta campanha'
+            });
+        }
+
+        console.log(`Sending to webhook ${webhookUsed}:`, webhookUrl);
+
+        let webhookError = null;
+
+        try {
+            // USAR httpsAgent PARA IGNORAR SSL
+            await axios.post(webhookUrl, webhookPayload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 30000,
+                httpsAgent: httpsAgent
+            });
+        } catch (error) {
+            // Se falhar com webhook A e webhook B estiver disponível, tentar B
+            if (webhookUsed === 'A' && campaign.webhook_url_b) {
+                logger.warn('Webhook A falhou, tentando webhook B', {
+                    campaignId: campaign.campaign_id,
+                    error: error.message
+                });
+
+                webhookUrl = campaign.webhook_url_b;
+                webhookUsed = 'B';
+                console.log(`Retrying with webhook ${webhookUsed}:`, webhookUrl);
+
+                try {
+                    await axios.post(webhookUrl, webhookPayload, {
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 30000,
+                        httpsAgent: httpsAgent
+                    });
+                } catch (retryError) {
+                    webhookError = retryError;
+                }
+            } else {
+                webhookError = error;
+            }
+        }
+
+        if (webhookError) {
+            throw webhookError;
+        }
 
         // Atualizar status e marcar início
         await pool.query(
@@ -194,24 +249,28 @@ exports.executeCampaign = async (req, res) => {
 
         // Registrar evento
         await analyticsService.trackEvent(id, 'campaign_started', {
-            totalContacts: contacts.length
+            totalContacts: contacts.length,
+            webhookUsed: webhookUsed
         });
 
         // Notificar via WebSocket
         websocketService.notifyCampaignUpdate(campaign.campaign_id, userId, {
             event: 'campaign_started',
-            totalContacts: contacts.length
+            totalContacts: contacts.length,
+            webhookUsed: webhookUsed
         });
 
         logger.campaignLog(campaign.campaign_id, 'started', {
             userId,
-            totalContacts: contacts.length
+            totalContacts: contacts.length,
+            webhookUsed: webhookUsed
         });
 
         res.json({
             success: true,
-            message: 'Campanha iniciada com sucesso',
-            campaignId: campaign.campaign_id
+            message: `Campanha iniciada com sucesso (usando webhook ${webhookUsed})`,
+            campaignId: campaign.campaign_id,
+            webhookUsed: webhookUsed
         });
 
     } catch (error) {
@@ -224,7 +283,12 @@ exports.listCampaigns = async (req, res) => {
     try {
         const userId = req.user.userId;
         const result = await pool.query(
-            'SELECT id, campaign_id, name, status, total_contacts, sent_count, error_count, created_at FROM campaigns WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+            `SELECT id, campaign_id, name, description, status, total_contacts, sent_count, error_count,
+                    webhook_url_a, webhook_url_b, custom_message, created_at, updated_at
+             FROM campaigns
+             WHERE user_id = $1
+             ORDER BY created_at DESC
+             LIMIT 50`,
             [userId]
         );
         res.json({ success: true, campaigns: result.rows });
@@ -671,5 +735,202 @@ exports.exportCampaignReport = async (req, res) => {
     } catch (error) {
         logger.error('Erro ao exportar relatório', { error: error.message, campaignId: id });
         res.status(500).json({ success: false, message: 'Erro ao exportar relatório' });
+    }
+};
+
+/**
+ * Atualiza uma campanha existente
+ * PUT /api/campaigns/:id
+ */
+exports.updateCampaign = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.userId;
+        const { name, description, webhook_url_a, webhook_url_b, custom_message, config } = req.body;
+
+        // Verificar se a campanha existe e pertence ao usuário
+        const checkResult = await pool.query(
+            'SELECT id, status FROM campaigns WHERE id = $1 AND user_id = $2',
+            [id, userId]
+        );
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Campanha não encontrada'
+            });
+        }
+
+        const campaign = checkResult.rows[0];
+
+        // Não permitir atualização de campanhas em execução
+        if (campaign.status === 'running') {
+            return res.status(400).json({
+                success: false,
+                message: 'Não é possível atualizar uma campanha em execução'
+            });
+        }
+
+        // Validar que ao menos um webhook foi fornecido
+        if (webhook_url_a === '' && webhook_url_b === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Pelo menos um webhook (A ou B) deve ser configurado'
+            });
+        }
+
+        // Atualizar config se fornecido
+        let finalConfig = null;
+        if (config) {
+            const currentResult = await pool.query(
+                'SELECT config FROM campaigns WHERE id = $1',
+                [id]
+            );
+            const currentConfig = currentResult.rows[0].config || {};
+            finalConfig = { ...currentConfig, ...config };
+        }
+
+        // Construir query de atualização dinâmica
+        const updates = [];
+        const values = [];
+        let paramCount = 1;
+
+        if (name !== undefined) {
+            updates.push(`name = $${paramCount++}`);
+            values.push(name);
+        }
+        if (description !== undefined) {
+            updates.push(`description = $${paramCount++}`);
+            values.push(description);
+        }
+        if (webhook_url_a !== undefined) {
+            updates.push(`webhook_url_a = $${paramCount++}`);
+            values.push(webhook_url_a);
+        }
+        if (webhook_url_b !== undefined) {
+            updates.push(`webhook_url_b = $${paramCount++}`);
+            values.push(webhook_url_b);
+        }
+        if (custom_message !== undefined) {
+            updates.push(`custom_message = $${paramCount++}`);
+            values.push(custom_message);
+        }
+        if (finalConfig !== null) {
+            updates.push(`config = $${paramCount++}`);
+            values.push(JSON.stringify(finalConfig));
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Nenhum campo para atualizar'
+            });
+        }
+
+        updates.push(`updated_at = NOW()`);
+        values.push(id);
+
+        const query = `
+            UPDATE campaigns
+            SET ${updates.join(', ')}
+            WHERE id = $${paramCount}
+            RETURNING id, campaign_id, name, description, status, webhook_url_a, webhook_url_b, custom_message, updated_at
+        `;
+
+        const result = await pool.query(query, values);
+
+        logger.info('Campanha atualizada', {
+            campaignId: id,
+            userId,
+            updates: Object.keys(req.body)
+        });
+
+        res.json({
+            success: true,
+            message: 'Campanha atualizada com sucesso',
+            campaign: result.rows[0]
+        });
+
+    } catch (error) {
+        logger.error('Erro ao atualizar campanha', { error: error.message, campaignId: id });
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao atualizar campanha: ' + error.message
+        });
+    }
+};
+
+/**
+ * Deleta uma campanha
+ * DELETE /api/campaigns/:id
+ */
+exports.deleteCampaign = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.userId;
+
+        // Verificar se a campanha existe e pertence ao usuário
+        const checkResult = await pool.query(
+            'SELECT id, campaign_id, status FROM campaigns WHERE id = $1 AND user_id = $2',
+            [id, userId]
+        );
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Campanha não encontrada'
+            });
+        }
+
+        const campaign = checkResult.rows[0];
+
+        // Não permitir deleção de campanhas em execução
+        if (campaign.status === 'running') {
+            return res.status(400).json({
+                success: false,
+                message: 'Não é possível deletar uma campanha em execução. Aguarde a conclusão ou pare a campanha primeiro.'
+            });
+        }
+
+        // Deletar eventos relacionados
+        await pool.query(
+            'DELETE FROM campaign_events WHERE campaign_id = $1',
+            [campaign.id]
+        );
+
+        // Deletar logs de mensagens relacionadas
+        await pool.query(
+            'DELETE FROM campaign_message_logs WHERE campaign_id = $1',
+            [campaign.id]
+        );
+
+        // Deletar contatos relacionados (se existir tabela campaign_contacts)
+        await pool.query(
+            'DELETE FROM campaign_contacts WHERE campaign_id = $1',
+            [campaign.id]
+        );
+
+        // Deletar a campanha
+        await pool.query(
+            'DELETE FROM campaigns WHERE id = $1',
+            [campaign.id]
+        );
+
+        logger.info('Campanha deletada', {
+            campaignId: campaign.campaign_id,
+            userId
+        });
+
+        res.json({
+            success: true,
+            message: 'Campanha deletada com sucesso'
+        });
+
+    } catch (error) {
+        logger.error('Erro ao deletar campanha', { error: error.message, campaignId: id });
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao deletar campanha: ' + error.message
+        });
     }
 };

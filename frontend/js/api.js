@@ -136,6 +136,19 @@ class ApiClient {
         return this.request(`/campaigns/${id}/logs`);
     }
 
+    async updateCampaign(id, campaignData) {
+        return this.request(`/campaigns/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(campaignData)
+        });
+    }
+
+    async deleteCampaign(id) {
+        return this.request(`/campaigns/${id}`, {
+            method: 'DELETE'
+        });
+    }
+
     // Helpers
     getCurrentUser() {
         const userStr = localStorage.getItem('prismatech_user');
