@@ -1,10 +1,28 @@
 # 🔄 Como Resetar o Banco de Dados
 
-## Método Simples (PowerShell)
+## 🚀 Método SUPER SIMPLES (Node.js)
 
-### 1️⃣ Opção 1: Script Automático (RECOMENDADO)
+### 1️⃣ Opção 1: Comando NPM (MAIS FÁCIL)
 
-Abra o PowerShell na pasta `backend` e execute:
+Abra o PowerShell ou CMD na pasta `backend` e execute:
+
+```powershell
+npm run reset-db
+```
+
+**Pronto!** Isso vai resetar todo o banco de dados automaticamente.
+
+### 2️⃣ Opção 2: Script Direto
+
+```powershell
+node reset-database.js
+```
+
+---
+
+## Método Alternativo (PowerShell com psql)
+
+### 3️⃣ Opção 3: Script PowerShell (requer psql instalado)
 
 ```powershell
 .\reset-database.ps1
