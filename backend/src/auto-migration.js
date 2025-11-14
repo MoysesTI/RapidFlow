@@ -69,7 +69,7 @@ async function runMigrations() {
 
         if (checkAdmin.rows.length === 0) {
             console.log('👤 Criando usuário administrador...');
-            const bcrypt = require('bcryptjs');
+            const bcrypt = require('bcrypt');
             const adminPassword = await bcrypt.hash('#serverprisma@dti', 10);
 
             await pool.query(`
