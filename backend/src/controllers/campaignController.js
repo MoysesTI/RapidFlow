@@ -52,12 +52,14 @@ exports.createCampaign = async (req, res) => {
         );
 
         const userConfig = userConfigResult.rows[0] || {};
-        
+
+        // PRIORIDADE: Configuração da campanha > user_configs > padrões
+        // Permite usar webhooks e configs diferentes por campanha
         const finalConfig = {
-            webhookUrl: userConfig.webhook_url || config.webhookUrl || '',
-            evolutionEndpoint: userConfig.evolution_endpoint || config.evolutionEndpoint || '',
-            evolutionApiKey: userConfig.evolution_api_key || config.apiKey || '',
-            openaiApiKey: userConfig.openai_api_key || config.openaiKey || '',
+            webhookUrl: config.webhookUrl || userConfig.webhook_url || '',
+            evolutionEndpoint: config.evolutionEndpoint || userConfig.evolution_endpoint || '',
+            evolutionApiKey: config.apiKey || userConfig.evolution_api_key || '',
+            openaiApiKey: config.openaiKey || userConfig.openai_api_key || '',
             imageUrl: config.imageUrl || '',
             delayMin: config.delayMin || 140,
             delayMax: config.delayMax || 380,
